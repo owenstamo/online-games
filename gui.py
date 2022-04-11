@@ -6,6 +6,20 @@ from types import FunctionType
 import pygame
 import copy
 
+# TODO: Make GuiElement a parent of ElementGroup? Call it like a ContainerElement or something?
+
+def get_list_of_input(inp: any) -> list:
+    """
+    Converts the input value into a list. Will simply convert input to list type if already a sequence.
+    Will return empty list if input is None.
+    :param inp: Item or sequence converted to a list.
+    :return:
+    """
+    if isinstance(inp, Sequence):
+        return list(inp)
+    else:
+        return [] if inp is None else [inp]
+
 class Gui:
     # TODO: There are a lot of things shared between ElementGroup and GuiElement (like .parent,
     #  maybe .contents (if you change that), .bounding_box, etc.), maybe make them children of the same thing?
@@ -14,22 +28,17 @@ class Gui:
     class ElementGroup:
         def __init__(self, pos: Vert,
                      contents: Optional[Gui.ElementGroup, Gui.GuiElement, Sequence[Gui.ElementGroup, Gui.GuiElement]]
-                     = None, active: bool = True):
+                     = None, active: bool = True, **kwargs):
             """
             A group that contains a list of Gui Elements. Can be disabled or moved, which affects all Elements
 contained.
 
-            \nGuiElement Class Parameters:
-                pos: Vert
-                    - The position of the element group relative to its parent group (if it has one)
-                contents: Optional[Gui.ElementGroup, Gui.GuiElement, Sequence[Gui.ElementGroup, Gui.GuiElement]] = None
-                    - The list of GuiElements or ElementGroups contained within this group
-                active: bool = True
-                    - Whether or not to draw this group and its contents when the draw function is called
+            :param pos: The position of the element group relative to its parent (if it has one)
+            :param contents: The list of GuiElements or ElementGroups contained within this group
+            :param active: Whether or not to draw this group and its contents when the draw function is called
             """
             # First elements are at the bottom, last elements in list cover them
-            self.contents: list = \
-                contents if isinstance(contents, Sequence) else ([] if contents is None else [contents])
+            self.contents: list = get_list_of_input(contents)
             self._pos: Vert = pos
             self.active: bool = active
             self.parent: Optional[Gui.ElementGroup] = None
@@ -40,6 +49,7 @@ contained.
             if isinstance(elements, Sequence):
                 for element in elements:
                     if not isinstance(element, (Gui.GuiElement, Gui.ElementGroup)):
+                        print(element)
                         raise TypeError("List must only contain children of GuiElement, or ElementGroup")
             elif isinstance(elements, (Gui.GuiElement, Gui.ElementGroup)):
                 elements = [elements]
@@ -102,31 +112,37 @@ contained.
     class GuiElement:
 
         def __init__(self, pos: Vert,
-                     on_draw: Union[Sequence[FunctionType], FunctionType] = (), **kwargs):
+                     on_draw_before: Optional[Sequence[FunctionType], FunctionType] = None,
+                     on_draw_after: Optional[Sequence[FunctionType], FunctionType] = None, **kwargs):
             """
             A base gui element to provides basic framework to child classes.
 
-            \nGuiElement Class Parameters:
-                pos: Vert
-                    - The position of this element in its group (or global position of this element, if not in a group)
-                on_draw: Union[FunctionType, Sequence[FunctionType]] = ()
-                    - A function or list of functions called whenever element is drawn. When called, the passed parameters
-                      are: the element being drawn, the position of the element, and the size of the element
+            :param pos: The position of this element relative to its group (or the global position of this element,
+            if not under a parent)
+            :param on_draw_before: A function or list of functions called right before element is drawn. When called,
+            the passed parameters are: the element being drawn, the position of the element, and the size of the element
+            :param on_draw_after: A function or list of functions called right after element is drawn. When called,
+            the passed parameters are: the element being drawn, the position of the element, and the size of the element
             """
             self._pos: Vert = pos
             self.active: bool = True
-            self.on_draw: Sequence[FunctionType] = list(on_draw) if isinstance(on_draw, Sequence) else [on_draw]
+            self.on_draw_before: list[FunctionType] = get_list_of_input(on_draw_before)
+            self.on_draw_after: list[FunctionType] = get_list_of_input(on_draw_after)
             self.parent: Optional[Gui.ElementGroup] = None
 
         def draw(self, canvas: pygame.surface, offset: Vert = Vert(0, 0), force_draw: bool = False):
-            if self.active or force_draw:
-                self.draw_element(canvas, offset)
+            def call_on_draw_funcs(func_list):
                 if self.bounding_box:
-                    for func in self.on_draw:
+                    for func in func_list:
                         if self.bounding_box:
                             func(self, self.bounding_box[0] + offset, self.bounding_box[1] - self.bounding_box[0])
                         else:
                             func(self, self._pos, Vert(0, 0))
+
+            if self.active or force_draw:
+                call_on_draw_funcs(self.on_draw_before)
+                self.draw_element(canvas, offset)
+                call_on_draw_funcs(self.on_draw_after)
 
         def draw_element(self, canvas: pygame.surface, offset: Vert = Vert(0, 0)):
             pass
@@ -147,6 +163,29 @@ contained.
                     return True
             return False
 
+        def is_active_under(self, parent: Gui.ElementGroup) -> bool:
+            """
+            Returns whether this element is active when parent is drawn.
+            i.e. returns True if any parent of this element that is or is a child of parent is inactive
+            Returns false if this element is not a child of element
+            :param parent:
+            :return:
+            """
+            container = self
+            while container is not None:
+                if not container.active:
+                    return False
+                if container is parent:
+                    break
+                container = container.parent
+            else:
+                return False
+                # To future me: I know I can make this code a tiny bit more compact with a while True and including this
+                # return false within the first if statement, but maybe later I'll want to go back and change this
+                # return false to something else, then what am I gonna do, huh? Exactly.
+
+            return True
+
         @property
         def pos(self):
             return self._pos
@@ -166,44 +205,32 @@ contained.
            Drag parent is a Group or Element that is moved by dragging this element.
            All other args are either functions or lists of functions, and are called when the respective event occurs.
              - These functions are called with parameters referencing the GuiElement being called & the button."""
-        def __init__(self, on_mouse_down: Union[Sequence[FunctionType], FunctionType] = (),
-                           on_mouse_up: Union[Sequence[FunctionType], FunctionType] = (),
-                           while_mouse_down: Union[Sequence[FunctionType], FunctionType] = (),
-                           on_mouse_over: Union[Sequence[FunctionType], FunctionType] = (),
-                           on_mouse_not_over: Union[Sequence[FunctionType], FunctionType] = (),
-                           while_mouse_over: Union[Sequence[FunctionType], FunctionType] = (),
+        def __init__(self, on_mouse_down: Optional[Sequence[FunctionType], FunctionType] = None,
+                           on_mouse_up: Optional[Sequence[FunctionType], FunctionType] = None,
+                           while_mouse_down: Optional[Sequence[FunctionType], FunctionType] = None,
+                           on_mouse_over: Optional[Sequence[FunctionType], FunctionType] = None,
+                           on_mouse_not_over: Optional[Sequence[FunctionType], FunctionType] = None,
+                           while_mouse_over: Optional[Sequence[FunctionType], FunctionType] = None,
                            drag_parent: Optional[Gui.GuiElement, Gui.ElementGroup] = None, **kwargs):
             """
             A base gui class that adds the framework for mouse interaction, allowing the element to handle mouse clicks,
 releases, and holding, as well as mouse over and not over, and dragging of element
 
-            \nMouseInteractable Class Parameters:
-                on_mouse_down: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the element is clicked
-                on_mouse_up: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse is no longer being held after clicking the element
-                while_mouse_down: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called after this element has been clicked and before the mouse is released
-                on_mouse_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse starts hovering over this element
-                on_mouse_not_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse stops hovering over this element
-                while_mouse_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse is actively hovering over this element
-                drag_parent: Optional[Gui.GuiElement, Gui.ElementGroup] = None
-                    - The gui element or gui that is moved when this element is dragged
+            :param on_mouse_down: Function(s) that are called when the element is clicked
+            :param on_mouse_up: Function(s) that are called when the mouse is no longer being held after clicking the element
+            :param while_mouse_down: Function(s) that are called after this element has been clicked and before the mouse is released
+            :param on_mouse_over: Function(s) that are called when the mouse starts hovering over this element
+            :param on_mouse_not_over: Function(s) that are called when the mouse stops hovering over this element
+            :param while_mouse_over: Function(s) that are called when the mouse is actively hovering over this element
+            :param drag_parent: The gui element or gui that is moved when this element is dragged
             """
 
-            self.on_mouse_down = list(on_mouse_down) if isinstance(on_mouse_down, Sequence) else [on_mouse_down]
-            self.on_mouse_up = list(on_mouse_up) if isinstance(on_mouse_up, Sequence) else [on_mouse_up]
-            self.while_mouse_down = list(while_mouse_down) if isinstance(while_mouse_down, Sequence) \
-                                                           else [while_mouse_down]
-            self.on_mouse_over = list(on_mouse_over) if isinstance(on_mouse_over, Sequence) \
-                                                     else [on_mouse_over]
-            self.on_mouse_not_over = list(on_mouse_not_over) if isinstance(on_mouse_not_over, Sequence) \
-                                                             else [on_mouse_not_over]
-            self.while_mouse_over = list(while_mouse_over) if isinstance(while_mouse_over, Sequence) \
-                                                           else [while_mouse_over]
+            self.on_mouse_down: list[FunctionType] = get_list_of_input(on_mouse_down)
+            self.on_mouse_up: list[FunctionType] = get_list_of_input(on_mouse_up)
+            self.while_mouse_down: list[FunctionType] = get_list_of_input(while_mouse_down)
+            self.on_mouse_over: list[FunctionType] = get_list_of_input(on_mouse_over)
+            self.on_mouse_not_over: list[FunctionType] = get_list_of_input(on_mouse_not_over)
+            self.while_mouse_over: list[FunctionType] = get_list_of_input(while_mouse_over)
 
             self.drag_parent: Union[None, Gui.GuiElement, Gui.ElementGroup] = drag_parent
             if self.drag_parent:
@@ -246,15 +273,10 @@ releases, and holding, as well as mouse over and not over, and dragging of eleme
             A base shape gui class that adds a shape framework to child classes which contains variables specific
             to drawing.
 
-            \nShape Class Parameters:
-                col: Tuple[int, int, int]
-                    - The color of this shape
-                stroke_weight: int = 1
-                    - The width in pixels of the outline of this shape. Set to 0 for no outline
-                stroke_col: Tuple[int, int, int] = Colors.black
-                    - The color of the outline of this shape
-                no_fill: bool = False
-                    - Whether or not to draw the inside color of this shape
+            :param col: The color of this shape
+            :param stroke_weight: The width in pixels of the outline of this shape. Set to 0 for no outline
+            :param stroke_col: The color of the outline of this shape
+            :param no_fill: Whether or not to draw the inside color of this shape
             """
             self.col: Tuple[int, int, int] = col
             self.stroke_col: Tuple[int, int, int] = stroke_col
@@ -268,43 +290,9 @@ releases, and holding, as well as mouse over and not over, and dragging of eleme
             A gui element that can be drawn and interacted with as a square, a subclass of GuiElement, Shape, and
 MouseInteractable
 
-            \nRect Class Parameters:
-                size: Vert
-                    - A vertex storing the width and height of this rectangle
-
-            \nGuiElement Class Parameters:
-                pos: Vert
-                    - The position of this element in its group (or global position of this element, if not in a group)
-                on_draw: Union[FunctionType, Sequence[FunctionType]] = ()
-                    - A function or list of functions called whenever element is drawn. When called, the passed parameters
-                      are: the element being drawn, the position of the element, and the size of the element
-
-            \nShape Class Parameters:
-                col: Tuple[int, int, int]
-                    - The color of this shape
-                stroke_weight: int = 1
-                    - The width in pixels of the outline of this shape. Set to 0 for no outline
-                stroke_col: Tuple[int, int, int] = Colors.black
-                    - The color of the outline of this shape
-                no_fill: bool = False
-                    - Whether or not to draw the inside color of this shape
-
-            \nMouseInteractable Class Parameters:
-                on_mouse_down: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the element is clicked
-                on_mouse_up: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse is no longer being held after clicking the element
-                while_mouse_down: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called after this element has been clicked and before the mouse is released
-                on_mouse_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse starts hovering over this element
-                on_mouse_not_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse stops hovering over this element
-                while_mouse_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse is actively hovering over this element
-                drag_parent: Optional[Gui.GuiElement, Gui.ElementGroup] = None
-                    - The gui element or gui that is moved when this element is dragged
-
+            :param pos: Top left corner of this rectangle
+            :param size: A vertex storing the width and height of this rectangle
+            :param col: Color of this rectangle
             """
             Gui.GuiElement.__init__(self, pos=pos, **kwargs)
             Gui.Shape.__init__(self, col=col, **kwargs)
@@ -338,45 +326,16 @@ MouseInteractable
     class Circle(GuiElement, Shape, MouseInteractable):
         def __init__(self, pos: Vert, rad: int, col: Tuple[int, int, int], **kwargs):
             """
-            A gui element that can be drawn and interacted with as a circle, a subclass of GuiElement, Shape, and
-            MouseInteractable
+            A gui element that can be drawn and interacted with as a circle
 
             \nCircle Class Parameters:
                 rad: int
                     - The radius of this circle
 
-            \nGuiElement Class Parameters:
-                pos: Vert
-                    - The position of this element in its group (or global position of this element, if not in a group)
-                on_draw: Union[FunctionType, Sequence[FunctionType]] = ()
-                    - A function or list of functions called whenever element is drawn. When called, the passed parameters
-                      are: the element being drawn, the position of the element, and the size of the element
-
-            \nShape Class Parameters:
-                col: Tuple[int, int, int]
-                    - The color of this shape
-                stroke_weight: int = 1
-                    - The width in pixels of the outline of this shape. Set to 0 for no outline
-                stroke_col: Tuple[int, int, int] = Colors.black
-                    - The color of the outline of this shape
-                no_fill: bool = False
-                    - Whether or not to draw the inside color of this shape
-
-            \nMouseInteractable Class Parameters:
-                on_mouse_down: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the element is clicked
-                on_mouse_up: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse is no longer being held after clicking the element
-                while_mouse_down: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called after this element has been clicked and before the mouse is released
-                on_mouse_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse starts hovering over this element
-                on_mouse_not_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse stops hovering over this element
-                while_mouse_over: Union[Sequence[FunctionType], FunctionType] = ()
-                    - Function(s) that are called when the mouse is actively hovering over this element
-                drag_parent: Optional[Gui.GuiElement, Gui.ElementGroup] = None
-                    - The gui element or gui that is moved when this element is dragged
+            \nParent Classes:
+                - GuiElement
+                - Shape
+                - MouseInteractable
             """
             Gui.GuiElement.__init__(self, pos, **kwargs)
             Gui.Shape.__init__(self, col, **kwargs)
@@ -413,11 +372,25 @@ MouseInteractable
         def __init__(self, pos: Vert, text: str, font_size: int, font: str = "calibri",
                      col: Tuple[int, int, int] = (0, 0, 0),
                      text_align: Sequence[str, str] = ("CENTER", "CENTER"), antialias: bool = True):
+            """
+            A gui element that can be drawn and interacted with as a circle
+
+            :param pos: Text to be displayed
+            :param text: Size of the font of the text being displayed
+            :param font_size: Font of the text being displayed
+            :param font: Color of the text being displayed
+            :param col: Where the text should be drawn from
+            :param text_align: Where the text will be drawn from.
+            First element: "LEFT", "CENTER", "RIGHT". Second element: "TOP", "CENTER", "BOTTOM".
+            :param antialias: Whether the text should be drawn with antialias
+            """
+
             super().__init__(pos)
             text_align = [align.upper() for align in text_align]
-            for align in text_align:
-                if align not in ["LEFT", "CENTER", "RIGHT"]:
-                    raise ValueError(f"{align} not a valid text align. Must be: LEFT, CENTER, or RIGHT.")
+            if text_align[0] not in ["LEFT", "CENTER", "RIGHT"]:
+                raise ValueError(f"{text_align[0]} not a valid horizontal text align. Must be: LEFT, CENTER, or RIGHT.")
+            if text_align[1] not in ["TOP", "CENTER", "BOTTOM"]:
+                raise ValueError(f"{text_align[1]} not a valid vertical text align. Must be: TOP, CENTER, or BOTTOM.")
             self.text_align = text_align
 
             # Create getter/setters for:
@@ -433,7 +406,7 @@ MouseInteractable
 
         def calculate_pos(self):
             self._pos.x, self._pos.y = self.base_pos.x, self.base_pos.y
-            offsets = {"CENTER": 0.5, "RIGHT": 1}
+            offsets = {"LEFT": 0, "TOP": 0, "CENTER": 0.5, "RIGHT": 1, "BOTTOM": 1}
             self._pos.x -= self.rendered_size.x * offsets[self.text_align[0]]
             self._pos.y -= self.rendered_size.y * offsets[self.text_align[1]]
 
@@ -481,6 +454,11 @@ MouseInteractable
         # @property
         # def bounding_box(self):
         #     ...
+
+
+# Pass this into an element's on_draw
+def auto_center(element):
+    self
 
 class MouseEventHandler:
 
@@ -559,7 +537,7 @@ class GuiMouseEventHandler(MouseEventHandler):
                  main: Union[Sequence[FunctionType], FunctionType] = ()):
         super().__init__(main, on_mouse_down, on_mouse_up, while_mouse_down, while_mouse_up)
 
-        self.elements_holding_per_button: list[Optional[Gui.GuiElement]] = [None, None, None]
+        self.elements_holding_per_button: list[Optional[Gui.GuiElement, Gui.MouseInteractable]] = [None, None, None]
         self.element_over = self.p_element_over = None
 
         self.guis = self.p_guis = []
@@ -576,6 +554,7 @@ class GuiMouseEventHandler(MouseEventHandler):
 elements will have priority (i.e. later elements will overlap earlier elements, just as is when they are drawn).
         """
         self.guis = [] if active_gui is None else (active_gui if isinstance(active_gui, Sequence) else [active_gui])
+        self.guis = list(filter(lambda f: f is not None, self.guis))
         super().main()
         self.p_guis = self.guis
         self.p_element_over = self.element_over
@@ -587,29 +566,46 @@ elements will have priority (i.e. later elements will overlap earlier elements, 
         #   Maybe make a reset_element method in MouseInteractable? That should work.
         #  Okay so I don't think that'll work. Don't have to worry about mouse_over (that's automatically handled),
         #  For mouse_holding, maybe make a disable_gui function that releases any mouse holding? Idk man.
-        for active_gui in self.guis:
+        for active_gui in reversed(self.guis):
             self.element_over = active_gui.get_element_over(self.mouse_pos)
             if self.element_over is not None:
                 break
 
-        # Remove
+        # TODO: What if you rewrite this to loop over held elements, then check if it is in any no-longer active guis
+        #  then merge with next for loop
+        # If previously active gui is no longer active, make sure to call on_mouse_up with any buttons that are
+        # no longer down, and clear their mouse_buttons_holding
+        """
         for previously_active_gui in self.p_guis:
             if previously_active_gui not in self.guis:
                 # Already automatically handling mouse_over, in the on_mouse_not_over detection
-                buttons_released_per_element = {}
+                buttons_released = []
                 for button_num, element_holding in enumerate(self.elements_holding_per_button):
                     if element_holding is None:
                         continue
                     if element_holding.is_contained_under(previously_active_gui):
-                        if element_holding not in buttons_released_per_element.keys():
-                            buttons_released_per_element[element_holding] = []
-                        buttons_released_per_element[element_holding] += [button_num]
-                        self.elements_holding_per_button[button_num] = None
+                        buttons_released += [button_num]
 
-                for element, button_nums in buttons_released_per_element:
-                    ...
-                    # TODO
-                    # self.on_mouse_up()
+                self.on_mouse_up_gui(buttons_released)
+        """
+
+        # Stop holding any elements that are no longer active
+        buttons_released = []
+        for button_num, element_holding in enumerate(self.elements_holding_per_button):
+            if element_holding is None:
+                continue
+            # If the element is active under any of the guis being handled, then do not release the button holding it.
+            # So, release the button if: the element is not active under any of the guis, or the gui it is active under
+            # is no longer being handled.
+            active = False
+            for active_gui in self.guis:
+                if element_holding.is_active_under(active_gui):
+                    active = True
+                    break
+            if not active:
+                buttons_released += [button_num]
+        if buttons_released:
+            self.on_mouse_up_gui(buttons_released)
 
         if self.element_over and self.element_over != self.p_element_over and self.element_over.on_mouse_over:
             self.element_over.mouse_is_over = True
@@ -637,9 +633,9 @@ elements will have priority (i.e. later elements will overlap earlier elements, 
             for gui_on_mouse_down_func in element.on_mouse_down:
                 gui_on_mouse_down_func(element, buttons)
 
-    def on_mouse_up_gui(self, buttons, element=None):
-        # TODO
-        # if element
+    def on_mouse_up_gui(self, buttons):
+        # If you add anything else in here, you need to edit the code for mouse released when handling disabling guis
+        # since this is called whenever an element being held is disabled
         for button_num in buttons:
             element_holding = self.elements_holding_per_button[button_num]
             if element_holding and element_holding.on_mouse_up:
