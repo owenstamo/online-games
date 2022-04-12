@@ -456,9 +456,10 @@ MouseInteractable
         #     ...
 
 
+# TODO
 # Pass this into an element's on_draw
-def auto_center(element):
-    self
+# def auto_center(element):
+
 
 class MouseEventHandler:
 
