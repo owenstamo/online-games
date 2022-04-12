@@ -25,90 +25,6 @@ class Gui:
     #  maybe .contents (if you change that), .bounding_box, etc.), maybe make them children of the same thing?
     #  Maybe make ElementGroup a child of GuiElement?
     #  Wait, do I even need an ElementGroup?
-    class ElementGroup:
-        def __init__(self, pos: Vert,
-                     contents: Optional[Gui.ElementGroup, Gui.GuiElement, Sequence[Gui.ElementGroup, Gui.GuiElement]]
-                     = None, active: bool = True, **kwargs):
-            """
-            A group that contains a list of Gui Elements. Can be disabled or moved, which affects all Elements
-contained.
-
-            :param pos: The position of the element group relative to its parent (if it has one)
-            :param contents: The list of GuiElements or ElementGroups contained within this group
-            :param active: Whether or not to draw this group and its contents when the draw function is called
-            """
-            # First elements are at the bottom, last elements in list cover them
-            self.contents: list = get_list_of_input(contents)
-            self._pos: Vert = pos
-            self.active: bool = active
-            self.parent: Optional[Gui.ElementGroup] = None
-            # Bounding box is relative to position
-            self.bounding_box: Optional[list[Vert, Vert]] = self.reevaluate_bounding_box()
-
-        def add_element(self, elements: Union[Sequence, Gui.GuiElement, Gui.ElementGroup]):
-            if isinstance(elements, Sequence):
-                for element in elements:
-                    if not isinstance(element, (Gui.GuiElement, Gui.ElementGroup)):
-                        print(element)
-                        raise TypeError("List must only contain children of GuiElement, or ElementGroup")
-            elif isinstance(elements, (Gui.GuiElement, Gui.ElementGroup)):
-                elements = [elements]
-            else:
-                raise TypeError("Element to add must be list, child of GuiElement, or ElementGroup")
-
-            for element in elements:
-                element.parent = self
-            self.contents += elements
-            self.reevaluate_bounding_box()
-
-        def reevaluate_bounding_box(self):
-            # TODO: Call this when any children are moved / have their sizes changed, and call it on parent.
-            top_left, bottom_right = Vert(math.inf, math.inf), Vert(-math.inf, -math.inf)
-            no_bounding_box = True
-            for element in self.contents:
-                if element.bounding_box:
-                    no_bounding_box = False
-                    if element.bounding_box[0].x + element.pos.x < top_left.x:
-                        top_left.x = element.bounding_box[0].x + element.pos.x
-                    if element.bounding_box[1].x + element.pos.x > bottom_right.x:
-                        bottom_right.x = element.bounding_box[1].x + element.pos.x
-                    if element.bounding_box[0].y + element.pos.y < top_left.y:
-                        top_left.y = element.bounding_box[0].y + element.pos.y
-                    if element.bounding_box[1].y + element.pos.y > bottom_right.y:
-                        bottom_right.y = element.bounding_box[1].y + element.pos.y
-
-            self.bounding_box = None if no_bounding_box else [top_left, bottom_right]
-            if self.parent is not None:
-                self.parent.reevaluate_bounding_box()
-            return self.bounding_box
-
-        def get_element_over(self, mouse_pos: Vert, offset: Vert = Vert(0, 0)):
-            mouse_over = None
-            if self.active:
-                for element in self.contents:
-                    if isinstance(element, Gui.ElementGroup):
-                        element_over = element.get_element_over(mouse_pos)
-                        mouse_over = element_over if element_over else mouse_over
-                    elif isinstance(element, Gui.GuiElement) and element.mouse_over(mouse_pos, self._pos + offset):
-                        mouse_over = element
-
-            return mouse_over
-
-        def draw(self, canvas: pygame.surface, offset=Vert(0, 0)):
-            if self.active:
-                for element in self.contents:
-                    element.draw(canvas, self._pos + offset)
-
-        @property
-        def pos(self):
-            return self._pos
-
-        @pos.setter
-        def pos(self, value):
-            self._pos = value
-            if self.parent is not None:
-                self.parent.reevaluate_bounding_box()
-
     class GuiElement:
 
         def __init__(self, pos: Vert,
@@ -127,33 +43,36 @@ contained.
             self._pos: Vert = pos
             self.active: bool = True
             self.on_draw_before: list[FunctionType] = get_list_of_input(on_draw_before)
-            self.on_draw_after: list[FunctionType] = get_list_of_input(on_draw_after)
-            self.parent: Optional[Gui.ElementGroup] = None
 
-        def draw(self, canvas: pygame.surface, offset: Vert = Vert(0, 0), force_draw: bool = False):
+            self.on_draw_after: list[FunctionType] = get_list_of_input(on_draw_after)
+            self.parent: Optional[Gui.ContainerElement] = None
+            self.bounding_box: Optional[list[Vert, Vert]] = None
+
+        def draw(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
             def call_on_draw_funcs(func_list):
                 if self.bounding_box:
-                    for func in func_list:
-                        if self.bounding_box:
-                            func(self, self.bounding_box[0] + offset, self.bounding_box[1] - self.bounding_box[0])
-                        else:
-                            func(self, self._pos, Vert(0, 0))
+                    bounding_box_pos = self.bounding_box[0] + parent_absolute_pos
+                    bounding_box_size = self.bounding_box[1] - self.bounding_box[0]
+                else:
+                    bounding_box_pos, bounding_box_size = self._pos, Vert(0, 0)
+                for func in func_list:
+                    func(self, bounding_box_pos, bounding_box_size)
 
             if self.active or force_draw:
                 call_on_draw_funcs(self.on_draw_before)
-                self.draw_element(canvas, offset)
+                self.draw_element(canvas, parent_absolute_pos)
                 call_on_draw_funcs(self.on_draw_after)
 
-        def draw_element(self, canvas: pygame.surface, offset: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
             pass
 
-        def mouse_over(self, mouse_pos: Vert, offset: Vert = Vert(0, 0), force_check: bool = False):
+        def mouse_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0), force_check: bool = False):
             if self.active or force_check:
-                return self.mouse_over_element(mouse_pos - offset)
+                return self.mouse_over_element(mouse_pos - parent_absolute_pos)
             return False
 
         def mouse_over_element(self, mouse_pos: Vert):
-            pass
+            return False
 
         def is_contained_under(self, container) -> bool:
             possible_container = self
@@ -163,7 +82,7 @@ contained.
                     return True
             return False
 
-        def is_active_under(self, parent: Gui.ElementGroup) -> bool:
+        def is_active_under(self, parent: Gui.ContainerElement) -> bool:
             """
             Returns whether this element is active when parent is drawn.
             i.e. returns True if any parent of this element that is or is a child of parent is inactive
@@ -196,9 +115,89 @@ contained.
             if self.parent is not None:
                 self.parent.reevaluate_bounding_box()
 
-        @property
-        def bounding_box(self) -> Optional[list[Vert, Vert]]:
-            return None
+    class ContainerElement(GuiElement):
+        def __init__(self, pos: Vert,
+                     contents: Optional[Gui.ContainerElement, Gui.GuiElement, Sequence[Gui.ContainerElement, Gui.GuiElement]]
+                     = None, active: bool = True, **kwargs):
+            """
+            A group that contains a list of Gui Elements. Can be disabled or moved, which affects all Elements
+contained.
+
+            :param pos: The position of the element group relative to its parent (if it has one)
+            :param contents: The list of GuiElements or ElementGroups contained within this group
+            :param active: Whether to draw this group and its contents when the draw function is called
+            """
+            super().__init__(pos, **kwargs)
+            # First elements are at the bottom, last elements in list cover them
+            # TODO: When contents is set, make sure all contents set their parent to this
+            self.contents: list = get_list_of_input(contents)
+            self._pos: Vert = pos
+            self.active: bool = active
+            self.parent: Optional[Gui.ContainerElement] = None
+            # Bounding box is relative to position
+            self.bounding_box: Optional[list[Vert, Vert]] = None
+            self.reevaluate_bounding_box()
+
+        def add_element(self, elements: Union[Sequence, Gui.GuiElement, Gui.ContainerElement]):
+            if isinstance(elements, Sequence):
+                for element in elements:
+                    if not isinstance(element, (Gui.GuiElement, Gui.ContainerElement)):
+                        raise TypeError("List must only contain children of GuiElement, or ElementGroup")
+            elif isinstance(elements, (Gui.GuiElement, Gui.ContainerElement)):
+                elements = [elements]
+            else:
+                raise TypeError("Element to add must be list, child of GuiElement, or ElementGroup")
+
+            for element in elements:
+                element.parent = self
+            self.contents += elements
+            self.reevaluate_bounding_box()
+
+        def reevaluate_bounding_box(self, include_self=False):
+            # TODO: Call this when any children are moved / have their sizes changed, and call it on parent.
+            print(self, include_self)
+            top_left, bottom_right = Vert(math.inf, math.inf), Vert(-math.inf, -math.inf)
+            no_bounding_box = True
+            for element in self.contents + ([self] if include_self else []):
+                if element.bounding_box:
+                    no_bounding_box = False
+                    # TODO: Do I want to have bounding_box be relative to position or parent position?
+                    if element.bounding_box[0].x + element.pos.x < top_left.x:
+                        top_left.x = element.bounding_box[0].x + element.pos.x
+                    if element.bounding_box[1].x + element.pos.x > bottom_right.x:
+                        bottom_right.x = element.bounding_box[1].x + element.pos.x
+                    if element.bounding_box[0].y + element.pos.y < top_left.y:
+                        top_left.y = element.bounding_box[0].y + element.pos.y
+                    if element.bounding_box[1].y + element.pos.y > bottom_right.y:
+                        bottom_right.y = element.bounding_box[1].y + element.pos.y
+
+            self.bounding_box = None if no_bounding_box else [top_left, bottom_right]
+
+            print(self.bounding_box, "in group!")
+            if type(self.bounding_box) is list:
+                print(self.bounding_box[0], self.bounding_box[1])
+
+            if self.parent is not None:
+                self.parent.reevaluate_bounding_box()
+
+        def get_element_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0)):
+            mouse_over = None
+            if self.active:
+                # TODO: This can be sped up by looping over contents in reverse and selecting the first mouse_over
+                for element in self.contents:
+                    if element.mouse_over(mouse_pos, self._pos + parent_absolute_pos):
+                        mouse_over = element
+                    if isinstance(element, Gui.ContainerElement):
+                        if element_over := element.get_element_over(mouse_pos):
+                            mouse_over = element_over
+
+            return mouse_over
+
+        def draw(self, canvas: pygame.surface, parent_absolute_pos=Vert(0, 0), force_draw: bool = False):
+            super().draw(canvas, parent_absolute_pos, force_draw)
+            if self.active:
+                for element in self.contents:
+                    element.draw(canvas, self._pos + parent_absolute_pos)
 
     class MouseInteractable:
         """Adds drag_parent, on_mouse_click, on_mouse_release, and while_mouse_active, to Gui item.
@@ -211,7 +210,7 @@ contained.
                            on_mouse_over: Optional[Sequence[FunctionType], FunctionType] = None,
                            on_mouse_not_over: Optional[Sequence[FunctionType], FunctionType] = None,
                            while_mouse_over: Optional[Sequence[FunctionType], FunctionType] = None,
-                           drag_parent: Optional[Gui.GuiElement, Gui.ElementGroup] = None, **kwargs):
+                           drag_parent: Optional[Gui.GuiElement, Gui.ContainerElement] = None, **kwargs):
             """
             A base gui class that adds the framework for mouse interaction, allowing the element to handle mouse clicks,
 releases, and holding, as well as mouse over and not over, and dragging of element
@@ -232,7 +231,7 @@ releases, and holding, as well as mouse over and not over, and dragging of eleme
             self.on_mouse_not_over: list[FunctionType] = get_list_of_input(on_mouse_not_over)
             self.while_mouse_over: list[FunctionType] = get_list_of_input(while_mouse_over)
 
-            self.drag_parent: Union[None, Gui.GuiElement, Gui.ElementGroup] = drag_parent
+            self.drag_parent: Union[None, Gui.GuiElement, Gui.ContainerElement] = drag_parent
             if self.drag_parent:
                 self.drag_start = None
                 self.parent_at_drag_start = None
@@ -283,7 +282,7 @@ releases, and holding, as well as mouse over and not over, and dragging of eleme
             self.stroke_weight: int = stroke_weight
             self.no_fill: bool = no_fill
 
-    class Rect(GuiElement, Shape, MouseInteractable):
+    class Rect(ContainerElement, Shape, MouseInteractable):
 
         def __init__(self, pos: Vert, size: Vert, col: Tuple[int, int, int], **kwargs):
             """
@@ -294,16 +293,16 @@ MouseInteractable
             :param size: A vertex storing the width and height of this rectangle
             :param col: Color of this rectangle
             """
-            Gui.GuiElement.__init__(self, pos=pos, **kwargs)
+            self._size: Vert = size
+            Gui.ContainerElement.__init__(self, pos=pos, **kwargs)
             Gui.Shape.__init__(self, col=col, **kwargs)
             Gui.MouseInteractable.__init__(self, **kwargs)
-            self._size: Vert = size
 
-        def draw_element(self, canvas: pygame.surface, offset: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
             if not self.no_fill:
-                pygame.draw.rect(canvas, self.col, (self._pos + offset).list + self._size.list)
+                pygame.draw.rect(canvas, self.col, (self._pos + parent_absolute_pos).list + self._size.list)
             if self.stroke_weight > 0:
-                pygame.draw.rect(canvas, self.stroke_col, (self._pos + offset).list + self._size.list, self.stroke_weight)
+                pygame.draw.rect(canvas, self.stroke_col, (self._pos + parent_absolute_pos).list + self._size.list, self.stroke_weight)
 
         def mouse_over_element(self, mouse_pos: Vert):
             return self._pos.x < mouse_pos.x < self._pos.x + self._size.x and \
@@ -316,12 +315,12 @@ MouseInteractable
         @size.setter
         def size(self, value):
             self._size = value
-            if self.parent is not None:
-                self.parent.reevaluate_bounding_box()
+            self.reevaluate_bounding_box()
 
-        @property
-        def bounding_box(self) -> list[Vert, Vert]:
-            return [Vert(0, 0), self._size]
+        def reevaluate_bounding_box(self, *args):
+            self.bounding_box = [Vert(0, 0), self._size]
+            print(self.bounding_box, "in rect!")
+            super().reevaluate_bounding_box(True)
 
     class Circle(GuiElement, Shape, MouseInteractable):
         def __init__(self, pos: Vert, rad: int, col: Tuple[int, int, int], **kwargs):
@@ -342,11 +341,11 @@ MouseInteractable
             Gui.MouseInteractable.__init__(self, **kwargs)
             self._rad: int = rad
 
-        def draw_element(self, canvas: pygame.surface, offset: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
             if not self.no_fill:
-                pygame.draw.circle(canvas, self.col, (self._pos + offset).list, self._rad)
+                pygame.draw.circle(canvas, self.col, (self._pos + parent_absolute_pos).list, self._rad)
             if self.stroke_weight > 0:
-                pygame.draw.circle(canvas, self.stroke_col, (self._pos + offset).list, self._rad, self.stroke_weight)
+                pygame.draw.circle(canvas, self.stroke_col, (self._pos + parent_absolute_pos).list, self._rad, self.stroke_weight)
 
         def mouse_over_element(self, mouse_pos: Vert):
             return math.dist(mouse_pos.list, self._pos.list) <= self._rad
@@ -447,7 +446,7 @@ MouseInteractable
             self._font = value
             self.create_font_object()
 
-        def draw(self, canvas: pygame.surface, offset: Vert = Vert(0, 0), force_draw: bool = False):
+        def draw(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
             canvas.blit(self.rendered_font, self._pos)
 
         # TODO: (but only if bounding box is turned on for text)
