@@ -78,7 +78,7 @@ class Gui:
             self.on_draw_after: list[FunctionType] = get_list_of_input(on_draw_after)
             self.parent: Union[Gui.ContainerElement, None] = None
             self.bounding_box: Union[Gui.BoundingBox, None] = None
-            self.ignore_bounding_box: bool = ignore_bounding_box
+            self._ignore_bounding_box: bool = ignore_bounding_box
 
         def draw(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
             if self.active or force_draw:
@@ -132,6 +132,15 @@ class Gui:
                 # return false to something else, then what am I gonna do, huh? Exactly.
 
             return True
+
+        @property
+        def ignore_bounding_box(self):
+            return self._ignore_bounding_box
+
+        @ignore_bounding_box.setter
+        def ignore_bounding_box(self, value):
+            self._ignore_bounding_box = value
+            self.reevaluate_bounding_box()
 
         @property
         def bounding_box_ignoring_children(self) -> Union[Gui.BoundingBox, None]:
@@ -308,7 +317,6 @@ class Gui:
         #         self.mouse_is_over = False
 
     class Shape:
-        # TODO: What if I want to make a text element inside a shape?
         def __init__(self, col: Tuple[int, int, int], stroke_weight: int = 1,
                      stroke_col: Tuple[int, int, int] = Colors.black, no_fill: bool = False, **_):
             """
@@ -401,12 +409,10 @@ class Gui:
             self.reevaluate_bounding_box()
 
     class Text(GuiElement):
-        # Have: draw-from (whether you're drawing the text from the center, top left, etc),
-        # contribute-to-bounding-box, center-text (center text in middle of parent element
-        # TODO: Add center_in_element option
         def __init__(self, pos: Vert, text: str, font_size: int, font: str = "calibri",
                      col: Tuple[int, int, int] = (0, 0, 0),
-                     text_align: Sequence[str, str] = ("CENTER", "CENTER"), antialias: bool = True, **kwargs):
+                     text_align: Sequence[str, str] = ("CENTER", "CENTER"),
+                     antialias: bool = True, ignore_bounding_box=True, **kwargs):
             """
             A gui element that can be drawn as text. A subclass of GuiElement.
 
@@ -423,7 +429,7 @@ class Gui:
             self._pos = pos
             self._draw_pos = Vert(0, 0)
             self.rendered_size = Vert(0, 0)
-            super().__init__(self._pos, **kwargs)
+            super().__init__(self._pos, ignore_bounding_box=ignore_bounding_box, **kwargs)
 
             self.text_align = text_align
             self._text = text
@@ -530,27 +536,33 @@ class Gui:
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
 
-# TODO
+# TODO: Add description
 # Pass this into an element's on_draw
 def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = None,
-                             align: list[str, str] = ("CENTER", "CENTER"), # TODO: Does putting a tuple here mess up the handle_align function?
-                             absolute_offset: Vert = Vert(0, 0),
+                             align: list[str, str] = ("CENTER", "CENTER"),
+                             constant_offset: Vert = Vert(0, 0),
                              offset_scaled_by_element: Vert = Vert(0, 0),
                              offset_scaled_by_parent: Vert = Vert(0, 0)):
     """
 
     :param element_centered_on: The element to center on. Leave blank for parent.
     :param align: What part of the parent to center on. Horizontal options: "LEFT", "CENTER", "RIGHT". Vertical options: "TOP", "CENTER", "BOTTOM".
-    :param offset: Where in relation to the designated spot to draw the element.
-    :param offset_type: Whether the offset refers to a re
+    :param constant_offset: A constant offset added when drawing the element.
+    :param offset_scaled_by_element: A constant added when drawing the element that is scaled by the size of the size of the element.
+    :param offset_scaled_by_parent: A constant added when drawing the element that is scaled by the size of the size of the element centered on.
     """
+    align = align_handler(align)
+    offsets = {"LEFT": 0, "TOP": 0, "CENTER": 0.5, "RIGHT": 1, "BOTTOM": 1}
+
     def auto_center(element: Gui.GuiElement, _):
         bounding_box = element_centered_on.bounding_box if element_centered_on else element.parent.bounding_box
         if not bounding_box:
             bounding_box = Gui.BoundingBox(Vert(0, 0), Vert(0, 0))
-        element.pos = bounding_box.pos + bounding_box.size / 2
-        print(bounding_box, element.parent)
-
+        element.pos = bounding_box.pos + \
+                      bounding_box.size * (Vert([offsets[align_axis] for align_axis in align]) +
+                                           offset_scaled_by_parent) + \
+                      element.bounding_box_ignoring_children.size * offset_scaled_by_element + \
+                      constant_offset
 
     return auto_center
 
@@ -566,6 +578,7 @@ class MouseEventHandler:
         self.mouse_down = self.p_mouse_down = pygame.mouse.get_pressed(3)
         self.mouse_pos = self.p_mouse_pos = Vert(pygame.mouse.get_pos())
 
+        # TODO: Run this through input-to-list
         self.main_funcs = list(main) if isinstance(main, Sequence) else [main]
         self.on_mouse_down_funcs = list(on_mouse_down) if isinstance(on_mouse_down, Sequence) else [on_mouse_down]
         self.on_mouse_up_funcs = list(on_mouse_up) if isinstance(on_mouse_up, Sequence) else [on_mouse_up]
@@ -573,9 +586,6 @@ class MouseEventHandler:
             [while_mouse_down]
         self.while_mouse_up_funcs = list(while_mouse_up) if isinstance(while_mouse_up, Sequence) else [while_mouse_up]
 
-    # TODO: Take a parameter in main; if gui passed in is different than last, reset call mouse_released
-    #  let user pass in multiple guis in, earlier guis take priority when checking element_over
-    #    - (if element_over is None, then check next gui)
     def main(self, *_):
         self.mouse_down = pygame.mouse.get_pressed(3)
         self.mouse_pos = Vert(pygame.mouse.get_pos())
@@ -654,22 +664,12 @@ class GuiMouseEventHandler(MouseEventHandler):
         self.p_element_over = self.element_over
 
     def main_gui(self):
-        # TODO: Can you pass in gui when you call main?
-        #  If so, if you ever stop calling main then you'll have to reset the gui (i.e. call mouse_not_over and all that
-        #  on all elements. You should also do this you turn off visibility for a MouseInteractable.
-        #   Maybe make a reset_element method in MouseInteractable? That should work.
-        #  Okay so I don't think that'll work. Don't have to worry about mouse_over (that's automatically handled),
-        #  For mouse_holding, maybe make a disable_gui function that releases any mouse holding? Idk man.
         for active_gui in reversed(self.guis):
             self.element_over = active_gui.get_element_over(self.mouse_pos)
             if self.element_over is not None:
                 break
 
-        # TODO: What if you rewrite this to loop over held elements, then check if it is in any no-longer active guis
-        #  then merge with next for loop
-        # If previously active gui is no longer active, make sure to call on_mouse_up with any buttons that are
-        # no longer down, and clear their mouse_buttons_holding
-        """
+        """ MESSIER CODE FOR UPCOMING FOR LOOP
         for previously_active_gui in self.p_guis:
             if previously_active_gui not in self.guis:
                 # Already automatically handling mouse_over, in the on_mouse_not_over detection
@@ -701,38 +701,36 @@ class GuiMouseEventHandler(MouseEventHandler):
         if buttons_released:
             self.on_mouse_up_gui(buttons_released)
 
-        if self.element_over and self.element_over != self.p_element_over and self.element_over.on_mouse_over:
+        if self.element_over and self.element_over != self.p_element_over and isinstance(self.element_over, Gui.MouseInteractable):
             self.element_over.mouse_is_over = True
             for gui_on_mouse_over_func in self.element_over.on_mouse_over:
                 gui_on_mouse_over_func(self.element_over)
-        if self.p_element_over and self.element_over != self.p_element_over and self.p_element_over.on_mouse_not_over:
+        if self.p_element_over and self.element_over != self.p_element_over and isinstance(self.p_element_over, Gui.MouseInteractable):
             self.p_element_over.mouse_is_over = False
             for gui_on_mouse_not_over in self.p_element_over.on_mouse_not_over:
                 gui_on_mouse_not_over(self.p_element_over)
 
-        if self.element_over and self.element_over.while_mouse_over:
+        if self.element_over and isinstance(self.element_over, Gui.MouseInteractable):
             for gui_while_mouse_over_func in self.element_over.while_mouse_over:
                 gui_while_mouse_over_func(self.element_over)
 
-    def on_mouse_down_gui(self, buttons, element=None):
-        if element is None:
-            element = self.element_over
+    def on_mouse_down_gui(self, buttons):
         for button_num in buttons:
-            self.elements_holding_per_button[button_num] = element
+            self.elements_holding_per_button[button_num] = self.element_over
 
-        # TODO: What if element_over isn't a MouseInteractable?
-        if element and self.element_over.on_mouse_down:
+        if self.element_over and isinstance(self.element_over, Gui.MouseInteractable):
+            print(buttons)
             for button_num in buttons:
-                element.mouse_buttons_holding[button_num] = True
-            for gui_on_mouse_down_func in element.on_mouse_down:
-                gui_on_mouse_down_func(element, buttons)
+                self.element_over.mouse_buttons_holding[button_num] = True
+            for gui_on_mouse_down_func in self.element_over.on_mouse_down:
+                gui_on_mouse_down_func(self.element_over, buttons)
 
     def on_mouse_up_gui(self, buttons):
         # If you add anything else in here, you need to edit the code for mouse released when handling disabling guis
         # since this is called whenever an element being held is disabled
         for button_num in buttons:
             element_holding = self.elements_holding_per_button[button_num]
-            if element_holding and element_holding.on_mouse_up:
+            if element_holding and isinstance(element_holding, Gui.MouseInteractable):
                 element_holding.mouse_buttons_holding[button_num] = False
                 for gui_on_mouse_up_func in element_holding.on_mouse_up:
                     gui_on_mouse_up_func(element_holding, buttons)
@@ -742,6 +740,6 @@ class GuiMouseEventHandler(MouseEventHandler):
     def while_mouse_down_gui(self, buttons):
         for button in buttons:
             element_holding = self.elements_holding_per_button[button]
-            if element_holding and element_holding.while_mouse_down:
+            if element_holding and isinstance(element_holding, Gui.MouseInteractable):
                 for gui_while_mouse_down_func in element_holding.while_mouse_down:
                     gui_while_mouse_down_func(element_holding, buttons)
