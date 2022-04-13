@@ -6,8 +6,6 @@ from types import FunctionType
 import pygame
 import copy
 
-# TODO: fix text shit and add auto_center
-
 def get_list_of_input(inp: any) -> list:
     """
     Converts the input value into a list. Will simply convert input to list type if already a sequence. Will return empty list if input is None.
@@ -18,6 +16,18 @@ def get_list_of_input(inp: any) -> list:
         return list(inp)
     else:
         return [] if inp is None else [inp]
+
+def align_handler(text_align):
+    if len(text_align) != 2:
+        raise TypeError("Text align must be a list with two elements")
+    text_align = [align.upper() for align in text_align]
+    if text_align[0] in ["TOP", "BOTTOM"] or text_align[1] in ["LEFT", "RIGHT"]:
+        text_align[0], text_align[1] = text_align[1], text_align[0]
+    if text_align[0] not in ["LEFT", "CENTER", "RIGHT"]:
+        raise ValueError(f"{text_align[0]} not a valid horizontal text align. Must be: LEFT, CENTER, or RIGHT.")
+    if text_align[1] not in ["TOP", "CENTER", "BOTTOM"]:
+        raise ValueError(f"{text_align[1]} not a valid vertical text align. Must be: TOP, CENTER, or BOTTOM.")
+    return text_align
 
 class Gui:
     class BoundingBox:
@@ -56,10 +66,10 @@ class Gui:
             """
             A base gui element to provides basic framework to child classes.
 
-            :param pos: The position of this element relative to its group (or the global position of this element, if not under a parent)
-            :param on_draw_before: A function or list of functions called right before element is drawn. When called, the passed parameters are: the element being drawn, the position of the element, and the size of the element
-            :param on_draw_after: A function or list of functions called right after element is drawn. When called, the passed parameters are: the element being drawn, the position of the element, and the size of the element
-            :param ignore_bounding_box: Whether to ignore this element's bounding box when making calculations. Does not ignore any potential children's bounding boxes
+            :param pos: The position of this element relative to its group (or the global position of this element, if not under a parent).
+            :param on_draw_before: A function or list of functions called right before element is drawn. When called, the passed parameters are: the element being drawn, the position of the element, and the size of the element.
+            :param on_draw_after: A function or list of functions called right after element is drawn. When called, the passed parameters are: the element being drawn, the position of the element, and the size of the element.
+            :param ignore_bounding_box: Whether to ignore this element's bounding box when making calculations. Does not ignore any potential children's bounding boxes.
             """
             self._pos: Vert = pos
             self.active: bool = True
@@ -104,9 +114,9 @@ class Gui:
         def is_active_under(self, parent: Gui.ContainerElement) -> bool:
             """
             Returns whether this element is active when parent is drawn.
-            i.e. returns True if any parent of this element that is or is a child of parent is inactive
-            Returns false if this element is not a child of element
-            :param parent: TODO
+            \nI.e. returns True if any parent of this element that is or is a child of parent is inactive. Returns false if this element is not a child of element.
+
+            :param parent: Parent element that this element is contained under.
             """
             container = self
             while container is not None:
@@ -122,6 +132,18 @@ class Gui:
                 # return false to something else, then what am I gonna do, huh? Exactly.
 
             return True
+
+        @property
+        def bounding_box_ignoring_children(self) -> Union[Gui.BoundingBox, None]:
+            """
+            Returns the visual bounding box of this element, ignoring all child elements. Will likely return None for any non-visual elements.
+            """
+            return None
+
+        def reevaluate_bounding_box(self):
+            self.bounding_box = None if self.ignore_bounding_box else self.bounding_box_ignoring_children
+            if self.parent is not None:
+                self.parent.reevaluate_bounding_box()
 
         @property
         def pos(self):
@@ -142,20 +164,24 @@ class Gui:
             """
             A group that contains a list of Gui Elements. Can be disabled or moved, which affects all elements contained.
 
-            :param pos: The position of the element group relative to its parent (if it has one)
-            :param contents: The list of GuiElements or ElementGroups contained within this group
-            :param active: Whether to draw this group and its contents when the draw function is called
+            :param pos: The position of the element group relative to its parent (if it has one).
+            :param contents: The list of GuiElements or ElementGroups contained within this group. First elements are on the bottom, later elements overlap them.
+            :param active: Whether to draw this group and its contents when the draw function is called.
             """
             super().__init__(pos, **kwargs)
-            # First elements are at the bottom, last elements in list cover them
-            # TODO: When contents is set, make sure all contents set their parent to this
-            self.contents: list = get_list_of_input(contents)
             self._pos: Vert = pos
             self.active: bool = active
             self.parent: Union[Gui.ContainerElement, None] = None
             # Bounding box is relative to position
             self.bounding_box: Union[Gui.BoundingBox, None] = None
-            self.reevaluate_bounding_box()
+
+            self.contents: list[Gui.GuiElement] = []
+            if contents:
+                for element in get_list_of_input(contents):
+                    self.add_element(element)
+            else:
+                # Adding the elements from contents would've already run the reevaluate_bounding_box function
+                self.reevaluate_bounding_box()
 
         def add_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]]):
             if isinstance(elements, Sequence):
@@ -172,13 +198,15 @@ class Gui:
             self.contents += elements
             self.reevaluate_bounding_box()
 
-        def reevaluate_bounding_box(self, include_self: bool = False):
+        def reevaluate_bounding_box(self):
             """
-            :param include_self: Whether to incorporate this element's preexisting bounding box when calculating its new bounding box. Used for when this is a visual element that contains additional visual elements.
+            Sets this element's bounding box. Should be called whenever this element's size or draw position relative to it's stored position changes.
+            \nShould also be called if the position/size of any child element changes, or if a child is added or removed.
             """
-            # TODO: Call this when any children are moved / have their sizes changed, and call it on parent.
             top_left, bottom_right = Vert(math.inf, math.inf), Vert(-math.inf, -math.inf)
-            bounding_boxes = [self.bounding_box] if include_self and not self.ignore_bounding_box else []
+
+            ignoring_children = self.bounding_box_ignoring_children
+            bounding_boxes = [ignoring_children] if ignoring_children and not self.ignore_bounding_box else []
             for element in self.contents:
                 if element.bounding_box:  # and not element.ignore_bounding_box:  #Ignore child boxes of element as well
                     bounding_boxes += [element.bounding_box + element.pos]
@@ -220,10 +248,6 @@ class Gui:
                     element.draw(canvas, self._pos + parent_absolute_pos)
 
     class MouseInteractable:
-        """Adds drag_parent, on_mouse_click, on_mouse_release, and while_mouse_active, to Gui item.
-           Drag parent is a Group or Element that is moved by dragging this element.
-           All other args are either functions or lists of functions, and are called when the respective event occurs.
-             - These functions are called with parameters referencing the GuiElement being called & the button."""
         def __init__(self, on_mouse_down: Union[Sequence[FunctionType], FunctionType, None] = None,
                            on_mouse_up: Union[Sequence[FunctionType], FunctionType, None] = None,
                            while_mouse_down: Union[Sequence[FunctionType], FunctionType, None] = None,
@@ -232,16 +256,15 @@ class Gui:
                            while_mouse_over: Union[Sequence[FunctionType], FunctionType, None] = None,
                            drag_parent: Union[Gui.GuiElement, None] = None, **_):
             """
-            A base gui class that adds the framework for mouse interaction, allowing the element to handle mouse clicks,
-releases, and holding, as well as mouse over and not over, and dragging of element
+            A base gui class that adds the framework for mouse interaction, allowing the element to handle mouse clicks, releases, and holding, as well as mouse over and not over, and dragging of element.
 
-            :param on_mouse_down: Function(s) that are called when the element is clicked
-            :param on_mouse_up: Function(s) that are called when the mouse is no longer being held after clicking the element
-            :param while_mouse_down: Function(s) that are called after this element has been clicked and before the mouse is released
-            :param on_mouse_over: Function(s) that are called when the mouse starts hovering over this element
-            :param on_mouse_not_over: Function(s) that are called when the mouse stops hovering over this element
-            :param while_mouse_over: Function(s) that are called when the mouse is actively hovering over this element
-            :param drag_parent: The gui element or gui that is moved when this element is dragged
+            :param on_mouse_down: Function(s) that are called when the element is clicked. This element and mouse buttons pressed passed in as parameters.
+            :param on_mouse_up: Function(s) that are called when the mouse is no longer being held after clicking the element. This element and mouse buttons released passed in as parameters.
+            :param while_mouse_down: Function(s) that are called after this element has been clicked and before the mouse is released. This element and mouse buttons down passed in as parameters.
+            :param on_mouse_over: Function(s) that are called when the mouse starts hovering over this element. This element passed in as a parameter.
+            :param on_mouse_not_over: Function(s) that are called when the mouse stops hovering over this element. This element passed in as a parameter.
+            :param while_mouse_over: Function(s) that are called when the mouse is actively hovering over this element. This element passed in as a parameter.
+            :param drag_parent: The gui element or gui that is moved when this element is dragged.
             """
 
             self.on_mouse_down: list[FunctionType] = get_list_of_input(on_mouse_down)
@@ -289,13 +312,12 @@ releases, and holding, as well as mouse over and not over, and dragging of eleme
         def __init__(self, col: Tuple[int, int, int], stroke_weight: int = 1,
                      stroke_col: Tuple[int, int, int] = Colors.black, no_fill: bool = False, **_):
             """
-            A base shape gui class that adds a shape framework to child classes which contains variables specific
-            to drawing.
+            A base shape gui class that adds a shape framework to child classes which contains variables specific to drawing.
 
-            :param col: The color of this shape
-            :param stroke_weight: The width in pixels of the outline of this shape. Set to 0 for no outline
-            :param stroke_col: The color of the outline of this shape
-            :param no_fill: Whether or not to draw the inside color of this shape
+            :param col: The color of this shape.
+            :param stroke_weight: The width in pixels of the outline of this shape. Set to 0 for no outline.
+            :param stroke_col: The color of the outline of this shape.
+            :param no_fill: Whether or not to draw the inside color of this shape.
             """
             self.col: Tuple[int, int, int] = col
             self.stroke_col: Tuple[int, int, int] = stroke_col
@@ -306,12 +328,11 @@ releases, and holding, as well as mouse over and not over, and dragging of eleme
 
         def __init__(self, pos: Vert, size: Vert, col: Tuple[int, int, int], **kwargs):
             """
-            A gui element that can be drawn and interacted with as a square, a subclass of GuiElement, Shape, and
-MouseInteractable
+            A gui element that can be drawn and interacted with as a square. A subclass of ContainerElement, Shape, and MouseInteractable.
 
-            :param pos: Top left corner of this rectangle
-            :param size: A vertex storing the width and height of this rectangle
-            :param col: Color of this rectangle
+            :param pos: Top left corner of this rectangle.
+            :param size: A vertex storing the width and height of this rectangle.
+            :param col: Color of this rectangle.
             """
             self._size: Vert = size
             Gui.ContainerElement.__init__(self, pos=pos, **kwargs)
@@ -339,23 +360,18 @@ MouseInteractable
             self._size = ImmutableVert(value)
             self.reevaluate_bounding_box()
 
-        def reevaluate_bounding_box(self, *_):
-            self.bounding_box = Gui.BoundingBox(Vert(0, 0), self._size)
-            super().reevaluate_bounding_box(True)
+        @property
+        def bounding_box_ignoring_children(self):
+            return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class Circle(ContainerElement, Shape, MouseInteractable):
         def __init__(self, pos: Vert, rad: int, col: Tuple[int, int, int], **kwargs):
             """
-            A gui element that can be drawn and interacted with as a circle
+            A gui element that can be drawn and interacted with as a circle. A subclass of ContainerElement, Shape, and MouseInteractable
 
-            \nCircle Class Parameters:
-                rad: int
-                    - The radius of this circle
-
-            \nParent Classes:
-                - GuiElement
-                - Shape
-                - MouseInteractable
+            :param pos: The center position of this circle.
+            :param rad: The radius in every direction of this circle.
+            :param col: The color of this circle.
             """
             self._rad: int = rad
             Gui.ContainerElement.__init__(self, pos, **kwargs)
@@ -371,9 +387,9 @@ MouseInteractable
         def mouse_over_element(self, mouse_pos: Vert):
             return math.dist(mouse_pos.list, self._pos.list) <= self._rad
 
-        def reevaluate_bounding_box(self, *_):
-            self.bounding_box = Gui.BoundingBox(Vert(-1, -1) * self._rad, Vert(2, 2) * self._rad)
-            super().reevaluate_bounding_box(True)
+        @property
+        def bounding_box_ignoring_children(self):
+            return Gui.BoundingBox(Vert(-1, -1) * self._rad, Vert(2, 2) * self._rad)
 
         @property
         def rad(self):
@@ -384,22 +400,22 @@ MouseInteractable
             self._rad = value
             self.reevaluate_bounding_box()
 
-    class Text(ContainerElement):
+    class Text(GuiElement):
         # Have: draw-from (whether you're drawing the text from the center, top left, etc),
         # contribute-to-bounding-box, center-text (center text in middle of parent element
         # TODO: Add center_in_element option
         def __init__(self, pos: Vert, text: str, font_size: int, font: str = "calibri",
                      col: Tuple[int, int, int] = (0, 0, 0),
-                     text_align: Sequence[str, str] = ("CENTER", "CENTER"), antialias: bool = True):
+                     text_align: Sequence[str, str] = ("CENTER", "CENTER"), antialias: bool = True, **kwargs):
             """
-            A gui element that can be drawn as text
+            A gui element that can be drawn as text. A subclass of GuiElement.
 
             :param pos: Text to be displayed
             :param text: Size of the font of the text being displayed
             :param font_size: Font of the text being displayed
             :param font: Color of the text being displayed
             :param col: Where the text should be drawn from
-            :param text_align: Where the text will be drawn from. First element: "LEFT", "CENTER", "RIGHT". Second element: "TOP", "CENTER", "BOTTOM".
+            :param text_align: Where the text will be drawn from. Horizontal options: "LEFT", "CENTER", "RIGHT". Vertical options: "TOP", "CENTER", "BOTTOM".
             :param antialias: Whether the text should be drawn with antialias
             """
 
@@ -407,7 +423,7 @@ MouseInteractable
             self._pos = pos
             self._draw_pos = Vert(0, 0)
             self.rendered_size = Vert(0, 0)
-            super().__init__(self._pos)
+            super().__init__(self._pos, **kwargs)
 
             self.text_align = text_align
             self._text = text
@@ -504,28 +520,39 @@ MouseInteractable
 
         @text_align.setter
         def text_align(self, value):
-            if len(value) != 2:
-                raise TypeError("Text align must be a list with two elements")
-            value = [align.upper() for align in value]
-            if value[0] in ["TOP", "BOTTOM"] or value[1] in ["LEFT", "RIGHT"]:
-                value[0], value[1] = value[1], value[0]
-            if value[0] not in ["LEFT", "CENTER", "RIGHT"]:
-                raise ValueError(f"{value[0]} not a valid horizontal text align. Must be: LEFT, CENTER, or RIGHT.")
-            if value[1] not in ["TOP", "CENTER", "BOTTOM"]:
-                raise ValueError(f"{value[1]} not a valid vertical text align. Must be: TOP, CENTER, or BOTTOM.")
-            self._text_align = value
+            self._text_align = align_handler(value)
 
-        def draw(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
+        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
             canvas.blit(self.rendered_font, self._draw_pos + parent_absolute_pos)
 
-        def reevaluate_bounding_box(self, *_):
-            self.bounding_box = Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
-            super().reevaluate_bounding_box(True)
+        @property
+        def bounding_box_ignoring_children(self):
+            return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
 
 # TODO
 # Pass this into an element's on_draw
-# def auto_center(element):
+def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = None,
+                             align: list[str, str] = ("CENTER", "CENTER"), # TODO: Does putting a tuple here mess up the handle_align function?
+                             absolute_offset: Vert = Vert(0, 0),
+                             offset_scaled_by_element: Vert = Vert(0, 0),
+                             offset_scaled_by_parent: Vert = Vert(0, 0)):
+    """
+
+    :param element_centered_on: The element to center on. Leave blank for parent.
+    :param align: What part of the parent to center on. Horizontal options: "LEFT", "CENTER", "RIGHT". Vertical options: "TOP", "CENTER", "BOTTOM".
+    :param offset: Where in relation to the designated spot to draw the element.
+    :param offset_type: Whether the offset refers to a re
+    """
+    def auto_center(element: Gui.GuiElement, _):
+        bounding_box = element_centered_on.bounding_box if element_centered_on else element.parent.bounding_box
+        if not bounding_box:
+            bounding_box = Gui.BoundingBox(Vert(0, 0), Vert(0, 0))
+        element.pos = bounding_box.pos + bounding_box.size / 2
+        print(bounding_box, element.parent)
+
+
+    return auto_center
 
 
 class MouseEventHandler:

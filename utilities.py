@@ -246,9 +246,10 @@ class Colliding:
 
     @staticmethod
     def square_square(square1_pos, square1_size, square2_pos, square2_size):
-        # TODO: This expression can be simplified
-        return square1_pos.x + square1_size.x > square2_pos.x and square1_pos.x < square2_pos.x + square2_size.x and \
-               square1_pos.y + square1_size.y > square2_pos.y and square1_pos.y < square2_pos.y + square2_size.y
+        return square1_pos.x + square1_size.x > square2_pos.x > square1_pos.x - square2_size.x and \
+               square1_pos.y + square1_size.y > square2_pos.y > square1_pos.y - square2_size.y
+        # return square1_pos.x + square1_size.x > square2_pos.x and square1_pos.x < square2_pos.x + square2_size.x and \
+        #        square1_pos.y + square1_size.y > square2_pos.y and square1_pos.y < square2_pos.y + square2_size.y
 
     @staticmethod
     def circle_circle(circle1_pos, circle1_rad, circle2_pos, circle2_rad):
