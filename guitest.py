@@ -12,7 +12,9 @@ main_menu = Gui.ContainerElement(Vert(0, 0))
 
 print("adding rect!")
 
-main_menu.add_element(rect := Gui.Rect(Vert(50, 0), Vert(50, 50), (0, 0, 0)))
+main_menu.add_element(rect := Gui.Rect(Vert(50, 0), Vert(50, 50), (0, 0, 0), ignore_bounding_box=True))
+rect.add_element(circ := Gui.Circle(Vert(100, 100), 25, (150, 150, 150), ignore_bounding_box=False))
+main_menu.add_element(text := Gui.Text(Vert(100, 100), "OMG HI", 20, col=(255, 255, 255), text_align=["TOP", "LEFT"]))
 
 # rect.reevaluate_bounding_box()
 
@@ -25,13 +27,17 @@ while canvas_active:
 
     canvas.fill((215,) * 3)
 
-    for vert in main_menu.bounding_box:
-        pygame.draw.circle(canvas, (100,) * 3, vert.list, 5)
-
     main_menu.draw(canvas)
+
+    if main_menu.bounding_box:
+        pygame.draw.circle(canvas, (100,) * 3, main_menu.bounding_box.top_left.list, 5)
+        pygame.draw.circle(canvas, (100,) * 3, main_menu.bounding_box.bottom_right.list, 5)
+
+    # circ.rad += 1
+    text.pos += 1
+
     # print(main_menu.bounding_box)
     # print(main_menu.bounding_box[0], main_menu.bounding_box[1])
-
 
     clock.tick(60)
     pygame.display.flip()

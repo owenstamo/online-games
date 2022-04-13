@@ -39,14 +39,14 @@ def button_on_mouse_up(element, _):
         canvas_active = False
 
 class MainMenu:
-    test_gui = Gui.ElementGroup(Vert(0, 0))
+    test_gui = Gui.ContainerElement(Vert(0, 0))
 
     button_default_color = (210,) * 3
     button_mouse_holding_color = (150,) * 3
     button_mouse_over_color = (190,) * 3
 
     # region Main Menu Gui
-    main_menu_gui = Gui.ElementGroup(Vert(0, 0))
+    main_menu_gui = Gui.ContainerElement(Vert(0, 0))
 
     create_lobby_button = Gui.Rect(Vert(0, 0), Vert(0, 0), button_default_color)
     join_lobby_button = Gui.Rect(Vert(0, 0), Vert(0, 0), button_default_color)
@@ -65,7 +65,7 @@ class MainMenu:
     # endregion
 
     # region Options Gui
-    options_gui = Gui.ElementGroup(Vert(0, 0))
+    options_gui = Gui.ContainerElement(Vert(0, 0))
 
     options_back_button = Gui.Rect(Vert(0, 0), Vert(0, 0), button_default_color)
     options_button_list = [(options_back_button, Gui.Text(Vert(0, 0), "Create Lobby", 0))]

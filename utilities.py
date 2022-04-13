@@ -7,81 +7,70 @@ class Colors:
     light_gray = (230, 230, 230)
     gray = (200, 200, 200)
 
-class Vert:
+class ImmutableVert:
     """Vertex that can store any amount of floating point or integer values,
        with functionality for value-wise operations (e.g. <2, 3> * <4, 5> = <8, 15>)"""
 
-    def __init__(self, *components):
-        if type(components[0]) in (list, tuple):
+    @classmethod
+    def get_list(cls, *components):
+        if isinstance(components[0], ImmutableVert):
             if len(components) > 1:
-                raise TypeError(f"Input must contain list OR values")
-            self.list = list(components[0])
+                raise TypeError("Input may only contain list OR values")
+            return cls.get_list(*components[0].list)
+        if isinstance(components[0], (list, tuple)):
+            if len(components) > 1:
+                raise TypeError("Input may only contain list OR values")
+            return cls.get_list(*components[0])
         else:
             for value in components:
-                if type(value) not in (int, float):
-                    raise TypeError(f"Input contains value with invalid type {type(value)}")
-            self.list = list(components)
+                if not isinstance(value, (int, float)):
+                    raise TypeError(f"Input contains value ({value}) with invalid type {type(value)}")
+            return list(components)
+
+    def __init__(self, *components):
+        self._list = self.get_list(*components)
+        self.vert_type = ImmutableVert
+
+    @property
+    def list(self):
+        return list(self._list)
 
     @property
     def len(self):
-        return len(self.list)
+        return len(self._list)
 
     @property
     def x(self):
         if self.len < 1:
             raise IndexError("Vertex is not 1D")
-        return self.list[0]
-
-    @x.setter
-    def x(self, value):
-        if self.len < 1:
-            raise IndexError("Vertex is not 1D")
-        self.list[0] = value
+        return self._list[0]
 
     @property
     def y(self):
         if self.len < 1:
             raise IndexError("Vertex is not 2D")
-        return self.list[1]
-
-    @y.setter
-    def y(self, value):
-        if self.len < 2:
-            raise IndexError("Vertex is not 2D")
-        self.list[1] = value
+        return self._list[1]
 
     @property
     def z(self):
         if self.len < 3:
             raise IndexError("Vertex is not 3D")
-        return self.list[2]
-
-    @z.setter
-    def z(self, value):
-        if self.len < 3:
-            raise IndexError("Vertex is not 3D")
-        self.list[2] = value
+        return self._list[2]
 
     @property
     def w(self):
         if self.len < 4:
             raise IndexError("Vertex is not 4D")
-        return self.list[3]
-
-    @w.setter
-    def w(self, value):
-        if self.len < 4:
-            raise IndexError("Vertex is not 4D")
-        self.list[3] = value
+        return self._list[3]
 
     @property
     def magnitude(self):
-        return math.sqrt(sum([component * component for component in self.list]))
+        return math.sqrt(sum([component * component for component in self._list]))
 
     @property
     def unit(self):
         is_zero_vertex = True
-        for i in self.list:
+        for i in self._list:
             if i != 0:
                 is_zero_vertex = False
         return self if is_zero_vertex else self / self.magnitude
@@ -89,93 +78,161 @@ class Vert:
     @property
     def ceil(self):
         """Simply because pycharm gives an error when attempting to perform math.ceil on a Vert"""
-        return math.ceil(self)
-        # return Vert([math.ceil(i) for i in self.list])
+        return self.vert_type([math.ceil(i) for i in self._list])
 
     @property
     def floor(self):
         """Simply because pycharm gives an error when attempting to perform math.ceil on a Vert"""
-        return Vert([math.floor(i) for i in self.list])
+        return self.vert_type([math.floor(i) for i in self._list])
+
+    @property
+    def round(self):
+        """Simply because pycharm gives an error when attempting to perform math.ceil on a Vert"""
+        return self.vert_type([round(i) for i in self._list])
 
     @property
     def tuple(self):
-        return tuple(self.list)
+        return tuple(self._list)
 
     def __str__(self):
-        return "<" + ", ".join([str(i) for i in self.list]) + ">"
+        return "<" + ", ".join([str(i) for i in self._list]) + ">"
 
     def __add__(self, other):
-        if isinstance(other, Vert):
+        if isinstance(other, ImmutableVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
-            return Vert([self.list[i] + other.list[i] for i in range(self.len)])
-        elif type(other) in (float, int):
-            return Vert([component + other for component in self.list])
+            return self.vert_type([self._list[i] + other.list[i] for i in range(self.len)])
+        elif isinstance(other, (float, int)):
+            return self.vert_type([component + other for component in self._list])
         else:
             raise ValueError("Can only add numbers or other vertices")
 
     def __mul__(self, other):
-        if isinstance(other, Vert):
+        if isinstance(other, ImmutableVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
-            return Vert([self.list[i] * other.list[i] for i in range(self.len)])
-        elif type(other) in (float, int):
-            return Vert([component * other for component in self.list])
+            return self.vert_type([self._list[i] * other.list[i] for i in range(self.len)])
+        elif isinstance(other, (float, int)):
+            return self.vert_type([component * other for component in self._list])
         else:
             raise ValueError("Can only multiply numbers or other vertices")
 
     def __sub__(self, other):
-        if isinstance(other, Vert):
+        if isinstance(other, ImmutableVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
-            return Vert([self.list[i] - other.list[i] for i in range(self.len)])
-        elif type(other) in (float, int):
-            return Vert([component - other for component in self.list])
+            return self.vert_type([self._list[i] - other.list[i] for i in range(self.len)])
+        elif isinstance(other, (float, int)):
+            return self.vert_type([component - other for component in self._list])
         else:
             raise ValueError("Can only subtract numbers or other vertices")
 
     def __truediv__(self, other):
-        if isinstance(other, Vert):
+        if isinstance(other, ImmutableVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
-            return Vert([self.list[i] / other.list[i] for i in range(self.len)])
-        elif type(other) in (float, int):
-            return Vert([component / other for component in self.list])
+            return self.vert_type([self._list[i] / other.list[i] for i in range(self.len)])
+        elif isinstance(other, (float, int)):
+            return self.vert_type([component / other for component in self._list])
         else:
             raise ValueError("Can only divide by numbers or other vertices")
 
     def __neg__(self):
-        return Vert([-component for component in self.list])
+        return self.vert_type([-component for component in self._list])
 
     def __getitem__(self, item: int):
-        return self.list[item]
+        return self._list[item]
 
     def __setitem__(self, key: int, value):
-        self.list[key] = value
+        self._list[key] = value
 
     def __ceil__(self):
-        return Vert([math.ceil(component) for component in self.list])
+        return self.ceil
+
+    def __round__(self, n=None):
+        return self.vert_type([round(i, n) for i in self._list])
 
     def __eq__(self, other):
-        if type(other) is not Vert or other.len != self.len:
+        if not isinstance(other, ImmutableVert) or other.len != self.len:
             return False
-        for i in range(len(self.list)):
-            if self.list[i] != other.list[i]:
+        for i in range(len(self._list)):
+            if self._list[i] != other.list[i]:
                 return False
         return True
 
     def __mod__(self, other):
-        if type(other) is Vert:
+        if isinstance(other, ImmutableVert):
             if other.len != self.len:
                 raise IndexError("Vert lengths are not the same")
-            return Vert([self.list[i] % other.list[i] for i in range(self.len)])
-        elif type(other) in [int, float]:
-            return Vert([self.list[i] % other for i in range(self.len)])
+            return self.vert_type([self._list[i] % other.list[i] for i in range(self.len)])
+        elif isinstance(other, (int, float)):
+            return self.vert_type([self._list[i] % other for i in range(self.len)])
         else:
             raise ValueError("Other must be Vert, int, or float")
 
     def __len__(self):
         return self.len
+
+class Vert(ImmutableVert):
+    def __init__(self, *components):
+        super().__init__(components)
+        self.vert_type = Vert
+
+    @property
+    def list(self):
+        return self._list
+
+    @list.setter
+    def list(self, value):
+        self._list = self.get_list(value)
+
+    @list.setter
+    def list(self, value):
+        self._list = self.get_list(value)
+
+    @property
+    def len(self):
+        return super().len
+
+    @property
+    def x(self):
+        return super().x
+
+    @x.setter
+    def x(self, value):
+        if self.len < 1:
+            raise IndexError("Vertex is not 1D")
+        self._list[0] = value
+
+    @property
+    def y(self):
+        return super().y
+
+    @y.setter
+    def y(self, value):
+        if self.len < 2:
+            raise IndexError("Vertex is not 2D")
+        self._list[1] = value
+
+    @property
+    def z(self):
+        return super().z
+
+    @z.setter
+    def z(self, value):
+        if self.len < 3:
+            raise IndexError("Vertex is not 3D")
+        self._list[2] = value
+
+    @property
+    def w(self):
+        return super().w
+
+    @w.setter
+    def w(self, value):
+        if self.len < 4:
+            raise IndexError("Vertex is not 4D")
+        self._list[3] = value
 
 class Colliding:
     @staticmethod
