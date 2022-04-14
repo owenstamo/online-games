@@ -38,7 +38,7 @@ class Gui:
         def __add__(self, other):
             if isinstance(other, ImmutableVert):
                 return Gui.BoundingBox(self.pos + other, self.size)
-            elif other
+            elif isinstance(other, Gui.BoundingBox)
                 return Gui.BoundingBox(self.pos + other.pos, self.size + other.size)
             else:
                 return TypeError(f"Cannot add type {type(other)} to BoundingBox")
