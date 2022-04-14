@@ -1,7 +1,7 @@
 import socket
 import _thread
 import pickle
-import assets
+import shared_assets
 
 class Server:
     # Should the player join the server when they start the game, or when they join the lobby?
