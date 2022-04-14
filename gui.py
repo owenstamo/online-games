@@ -1,6 +1,6 @@
 from __future__ import annotations
 import math
-from utilities import ImmutableVert, Vert, constrain, Colors
+from utilities import ImmutableVert, Vert, Colors
 from typing import Sequence, Union, Tuple
 from types import FunctionType
 import pygame
@@ -31,12 +31,17 @@ def align_handler(text_align):
 
 class Gui:
     class BoundingBox:
-        def __init__(self, pos: Vert, size: Vert):
+        def __init__(self, pos: Union[Vert, ImmutableVert] = Vert(0, 0), size: Union[Vert, ImmutableVert] = Vert(0, 0)):
             self.pos = pos
             self.size = size
 
         def __add__(self, other):
-            return Gui.BoundingBox(self.pos + other, self.size)
+            if isinstance(other, ImmutableVert):
+                return Gui.BoundingBox(self.pos + other, self.size)
+            elif other
+                return Gui.BoundingBox(self.pos + other.pos, self.size + other.size)
+            else:
+                return TypeError(f"Cannot add type {type(other)} to BoundingBox")
 
         @property
         def top_left(self):
@@ -256,6 +261,29 @@ class Gui:
                 for element in self.contents:
                     element.draw(canvas, self._pos + parent_absolute_pos)
 
+    class BoundingContainer(ContainerElement):
+        """
+        A container element that has a custom bounding box. Acts basically like a Rect, but without drawing or mouse interaction.
+        """
+        def __init__(self, pos: Vert, size: Vert, **kwargs):
+            self._size: Vert = size
+            super().__init__(pos, **kwargs)
+
+        @property
+        def size(self):
+            return self._size
+
+        @size.setter
+        def size(self, value):
+            if not isinstance(value, ImmutableVert) or value.len != 2:
+                raise ValueError(f"Input size ({value}) must be Vert of length 2")
+            self._size = ImmutableVert(value)
+            self.reevaluate_bounding_box()
+
+        @property
+        def bounding_box_ignoring_children(self):
+            return Gui.BoundingBox(Vert(0, 0), self._size)
+
     class MouseInteractable:
         def __init__(self, on_mouse_down: Union[Sequence[FunctionType], FunctionType, None] = None,
                            on_mouse_up: Union[Sequence[FunctionType], FunctionType, None] = None,
@@ -263,7 +291,8 @@ class Gui:
                            on_mouse_over: Union[Sequence[FunctionType], FunctionType, None] = None,
                            on_mouse_not_over: Union[Sequence[FunctionType], FunctionType, None] = None,
                            while_mouse_over: Union[Sequence[FunctionType], FunctionType, None] = None,
-                           drag_parent: Union[Gui.GuiElement, None] = None, **_):
+                           drag_parent: Union[Gui.GuiElement, None] = None,
+                           drag_boundary: Union[Gui.GuiElement, Gui.BoundingBox, None] = None, **_):
             """
             A base gui class that adds the framework for mouse interaction, allowing the element to handle mouse clicks, releases, and holding, as well as mouse over and not over, and dragging of element.
 
@@ -274,6 +303,7 @@ class Gui:
             :param on_mouse_not_over: Function(s) that are called when the mouse stops hovering over this element. This element passed in as a parameter.
             :param while_mouse_over: Function(s) that are called when the mouse is actively hovering over this element. This element passed in as a parameter.
             :param drag_parent: The gui element or gui that is moved when this element is dragged.
+            :param drag_boundary: The boundary that this element must stay within when being dragged. May be a GuiElement with a boundary, or absolutely positioned custom boundary. Passing None automatically gets boundary from drag_parent's parent.
             """
 
             self.on_mouse_down: list[FunctionType] = get_list_of_input(on_mouse_down)
@@ -284,11 +314,14 @@ class Gui:
             self.while_mouse_over: list[FunctionType] = get_list_of_input(while_mouse_over)
 
             self.drag_parent: Union[Gui.GuiElement, None] = drag_parent
+
             if self.drag_parent:
                 self.drag_start = None
                 self.parent_at_drag_start = None
                 self.on_mouse_down += [self.start_dragging]
                 self.while_mouse_down += [self.while_dragging]
+
+                self.drag_boundary = drag_boundary
 
             self.mouse_buttons_holding = [False, False, False]
             self.mouse_is_over = False
@@ -297,13 +330,44 @@ class Gui:
             self.drag_start = Vert(pygame.mouse.get_pos())
             self.parent_at_drag_start = copy.deepcopy(self.drag_parent.pos)
 
-        def while_dragging(self, canvas_size: Vert, *_):
-            # TODO: Don't constrain to canvas, constrain to drag_parent's parent group (use canvas if there's no parent)
+        def while_dragging(self, *_):
             self.drag_parent.pos = self.parent_at_drag_start - (self.drag_start - Vert(pygame.mouse.get_pos()))
-            self.drag_parent.pos.x = constrain(self.drag_parent.pos.x, -self.drag_parent.bounding_box.top_left.x,
-                                               canvas_size.x - self.drag_parent.bounding_box.bottom_right.x)
-            self.drag_parent.pos.y = constrain(self.drag_parent.pos.y, -self.drag_parent.bounding_box.top_left.y,
-                                               canvas_size.y - self.drag_parent.bounding_box.bottom_right.y)
+            self.drag_parent.pos = self.drag_parent.pos.constrained(
+                self._drag_boundary.top_left - self.drag_parent.bounding_box.top_left,
+                self._drag_boundary.bottom_right - self.drag_parent.bounding_box.bottom_right
+            )
+
+        @property
+        def drag_boundary(self):
+            return self._drag_boundary
+
+        @drag_boundary.setter
+        def drag_boundary(self, value):
+            if self.drag_parent is None:
+                raise ValueError("This element does not have a drag parent.")
+            if isinstance(value, ImmutableVert):
+                value = Gui.BoundingBox(Vert(0, 0), value)
+            if value is None:
+                if self.drag_parent.parent is None:
+                    raise ValueError("Drag parent does not have a parent.")
+                if self.drag_parent.parent.bounding_box is None:
+                    raise ValueError("Drag parent's parent does not have a bounding box.")
+                self._drag_boundary = self.drag_parent.parent.bounding_box
+            elif isinstance(value, Gui.GuiElement):
+                if value.bounding_box is None:
+                    raise ValueError("Element passed in for drag_boundary does not have a bounding box.")
+                self._drag_boundary = value.bounding_box
+            elif isinstance(value, Gui.BoundingBox):
+                self._drag_boundary: Gui.BoundingBox = value
+            else:
+                raise TypeError("Drag boundary must be of type GuiElement, BoundingBox, or None.")
+
+            print(self.drag_parent, self._drag_boundary)
+            for drag_parent_size, boundary_size in zip(self.drag_parent.bounding_box.size, self._drag_boundary.size):
+                if drag_parent_size > boundary_size:
+                    raise ValueError(f"At least one value in the drag parent's size ({drag_parent_size}) is bigger than its corresponding value in the boundary's size ({boundary_size})")
+            print(self.drag_parent.bounding_box)
+            print(self._drag_boundary)
 
         # def reset_interactable(self):
         #     if any(self.mouse_buttons_holding):
@@ -719,7 +783,6 @@ class GuiMouseEventHandler(MouseEventHandler):
             self.elements_holding_per_button[button_num] = self.element_over
 
         if self.element_over and isinstance(self.element_over, Gui.MouseInteractable):
-            print(buttons)
             for button_num in buttons:
                 self.element_over.mouse_buttons_holding[button_num] = True
             for gui_on_mouse_down_func in self.element_over.on_mouse_down:

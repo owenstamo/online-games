@@ -173,6 +173,19 @@ class ImmutableVert:
     def __len__(self):
         return self.len
 
+    def constrained(self, bottom, top):
+        if not (len(self) == len(bottom) == len(top)):
+            raise ValueError("Length of top and bottom constraints must be same as Vert being constrained.")
+        for bottom_val, top_val in zip(bottom, top):
+            if top_val < bottom_val:
+                raise ValueError(f"At least one value in the top constraint ({top_val}) is less than its corresponding "
+                                 f"value in the bottom constraint ({bottom_val}).")
+
+        new_list = []
+        for this_val, bottom_val, top_val in zip(self, bottom, top):
+            new_list += [constrain(this_val, bottom_val, top_val)]
+        return Vert(new_list)
+
 class Vert(ImmutableVert):
     def __init__(self, *components):
         super().__init__(components)
