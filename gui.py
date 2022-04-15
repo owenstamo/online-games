@@ -7,6 +7,7 @@ import pygame
 import copy
 
 # Kinda need to figure out the deal with immutable verts vs verts, tuples vs lists, etc.
+# TODO: Figure out immutable verts
 
 def get_list_of_input(inp: any) -> list:
     """
@@ -66,7 +67,7 @@ class Gui:
 
     class GuiElement:
 
-        def __init__(self, pos: Vert,
+        def __init__(self, pos: ImmutableVert,
                      on_draw_before: Union[Sequence[FunctionType], FunctionType, None] = None,
                      on_draw_after: Union[Sequence[FunctionType], FunctionType, None] = None,
                      ignore_bounding_box: bool = False, **_):
@@ -78,7 +79,7 @@ class Gui:
             :param on_draw_after: A function or list of functions called right after element is drawn. When called, the passed parameters are: the element being drawn, the position of the element, and the size of the element.
             :param ignore_bounding_box: Whether to ignore this element's bounding box when making calculations. Does not ignore any potential children's bounding boxes.
             """
-            self._pos: Vert = pos
+            self._pos: ImmutableVert = pos
             self.active: bool = True
             self.on_draw_before: list[FunctionType] = get_list_of_input(on_draw_before)
 
@@ -146,8 +147,10 @@ class Gui:
 
         @ignore_bounding_box.setter
         def ignore_bounding_box(self, value):
+            prev_value = self._ignore_bounding_box
             self._ignore_bounding_box = value
-            self.reevaluate_bounding_box()
+            if prev_value != self.ignore_bounding_box:
+                self.reevaluate_bounding_box()
 
         @property
         def bounding_box_ignoring_children(self) -> Union[Gui.BoundingBox, None]:
@@ -169,12 +172,13 @@ class Gui:
         def pos(self, value):
             if not isinstance(value, ImmutableVert) or value.len != 2:
                 raise ValueError(f"Input pos ({value}) must be Vert of length 2")
+            prev_value = self._pos
             self._pos = ImmutableVert(value)
-            if self.parent is not None:
+            if self.parent is not None and prev_value != self._pos:
                 self.parent.reevaluate_bounding_box()
 
     class ContainerElement(GuiElement):
-        def __init__(self, pos: Vert,
+        def __init__(self, pos: ImmutableVert,
                      contents: Union[Gui.GuiElement, Sequence[Gui.GuiElement], None]
                      = None, active: bool = True, **kwargs):
             """
@@ -185,19 +189,13 @@ class Gui:
             :param active: Whether to draw this group and its contents when the draw function is called.
             """
             super().__init__(pos, **kwargs)
-            self._pos: Vert = pos
             self.active: bool = active
             self.parent: Union[Gui.ContainerElement, None] = None
             # Bounding box is relative to position
             self.bounding_box: Union[Gui.BoundingBox, None] = None
 
-            self.contents: list[Gui.GuiElement] = []
-            if contents:
-                for element in get_list_of_input(contents):
-                    self.add_element(element)
-            else:
-                # Adding the elements from contents would've already run the reevaluate_bounding_box function
-                self.reevaluate_bounding_box()
+            self._contents: list[Gui.GuiElement] = []
+            self.contents = contents
 
         def add_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]]):
             if isinstance(elements, Sequence):
@@ -211,7 +209,7 @@ class Gui:
 
             for element in elements:
                 element.parent = self
-            self.contents += elements
+            self._contents += elements
             self.reevaluate_bounding_box()
 
         def reevaluate_bounding_box(self):
@@ -223,7 +221,7 @@ class Gui:
 
             ignoring_children = self.bounding_box_ignoring_children
             bounding_boxes = [ignoring_children] if ignoring_children and not self.ignore_bounding_box else []
-            for element in self.contents:
+            for element in self._contents:
                 if element.bounding_box:  # and not element.ignore_bounding_box:  #Ignore child boxes of element as well
                     bounding_boxes += [element.bounding_box + element.pos]
 
@@ -246,7 +244,7 @@ class Gui:
 
         def get_element_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0)):
             if self.active:
-                for element in reversed(self.contents):
+                for element in reversed(self._contents):
                     if isinstance(element, Gui.ContainerElement):
                         if element_over := element.get_element_over(mouse_pos):
                             return element_over
@@ -257,8 +255,22 @@ class Gui:
         def draw(self, canvas: pygame.surface, parent_absolute_pos=Vert(0, 0), force_draw: bool = False):
             super().draw(canvas, parent_absolute_pos, force_draw)
             if self.active:
-                for element in self.contents:
+                for element in self._contents:
                     element.draw(canvas, self._pos + parent_absolute_pos)
+
+        @property
+        def contents(self) -> list[Gui.GuiElement]:
+            return self._contents
+
+        @contents.setter
+        def contents(self, value):
+            self._contents = []
+            if value:
+                for element in get_list_of_input(value):
+                    self.add_element(element)
+            else:
+                # Adding the elements from contents would've already run the reevaluate_bounding_box function
+                self.reevaluate_bounding_box()
 
     class BoundingContainer(ContainerElement):
         """
@@ -276,8 +288,10 @@ class Gui:
         def size(self, value):
             if not isinstance(value, ImmutableVert) or value.len != 2:
                 raise ValueError(f"Input size ({value}) must be Vert of length 2")
+            prev_value = self._size
             self._size = ImmutableVert(value)
-            self.reevaluate_bounding_box()
+            if prev_value != self._size:
+                self.reevaluate_bounding_box()
 
         @property
         def bounding_box_ignoring_children(self):
@@ -394,7 +408,9 @@ class Gui:
 
     class Rect(ContainerElement, Shape, MouseInteractable):
 
-        def __init__(self, pos: Vert, size: Vert, col: Tuple[int, int, int], **kwargs):
+        def __init__(self, pos: ImmutableVert = Vert(0, 0),
+                           size: ImmutableVert = Vert(0, 0),
+                           col: Tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
             A gui element that can be drawn and interacted with as a square. A subclass of ContainerElement, Shape, and MouseInteractable.
 
@@ -402,7 +418,7 @@ class Gui:
             :param size: A vertex storing the width and height of this rectangle.
             :param col: Color of this rectangle.
             """
-            self._size: Vert = size
+            self._size: ImmutableVert = size
             Gui.ContainerElement.__init__(self, pos=pos, **kwargs)
             Gui.Shape.__init__(self, col=col, **kwargs)
             Gui.MouseInteractable.__init__(self, **kwargs)
@@ -425,15 +441,19 @@ class Gui:
         def size(self, value):
             if not isinstance(value, ImmutableVert) or value.len != 2:
                 raise ValueError(f"Input size ({value}) must be Vert of length 2")
+            prev_value = self._size
             self._size = ImmutableVert(value)
-            self.reevaluate_bounding_box()
+            if prev_value != self._size:
+                self.reevaluate_bounding_box()
 
         @property
         def bounding_box_ignoring_children(self):
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class Circle(ContainerElement, Shape, MouseInteractable):
-        def __init__(self, pos: Vert, rad: int, col: Tuple[int, int, int], **kwargs):
+        def __init__(self, pos: Vert = ImmutableVert(0, 0),
+                           rad: int = 0,
+                           col: Tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
             A gui element that can be drawn and interacted with as a circle. A subclass of ContainerElement, Shape, and MouseInteractable
 
@@ -465,12 +485,14 @@ class Gui:
 
         @rad.setter
         def rad(self, value):
+            prev_value = self._rad
             self._rad = value
-            self.reevaluate_bounding_box()
+            if prev_value != self._rad:
+                self.reevaluate_bounding_box()
 
     class Text(GuiElement):
-        def __init__(self, pos: Vert, text: str, font_size: int, font: str = "calibri",
-                     col: Tuple[int, int, int] = (0, 0, 0),
+        def __init__(self, text: str, pos: ImmutableVert = ImmutableVert(0, 0), font_size: int = 0,
+                     font: str = "calibri", col: Tuple[int, int, int] = (0, 0, 0),
                      text_align: Sequence[str, str] = ("CENTER", "CENTER"),
                      antialias: bool = True, ignore_bounding_box=True, **kwargs):
             """
@@ -490,7 +512,7 @@ class Gui:
             self.rendered_size = Vert(0, 0)
             super().__init__(self._pos, ignore_bounding_box=ignore_bounding_box, **kwargs)
 
-            self.text_align = text_align
+            self._text_align = align_handler(text_align)
             self._text = text
             self._antialias = antialias
             self._col = col
@@ -531,8 +553,10 @@ class Gui:
         def pos(self, value):
             if not isinstance(value, ImmutableVert) or value.len != 2:
                 raise ValueError(f"Input pos ({value}) must be Vert of length 2")
+            prev_value = self._pos
             self._pos = ImmutableVert(value)
-            self.calculate_pos()
+            if prev_value != self._pos:
+                self.calculate_pos()
 
         @property
         def font_size(self):
@@ -540,8 +564,10 @@ class Gui:
 
         @font_size.setter
         def font_size(self, value):
+            prev_value = self._font_size
             self._font_size = int(value)
-            self.create_font_object()
+            if prev_value != self._font_size:
+                self.create_font_object()
 
         @property
         def font(self):
@@ -549,8 +575,10 @@ class Gui:
 
         @font.setter
         def font(self, value):
+            prev_value = self._font
             self._font = value
-            self.create_font_object()
+            if prev_value != self._font:
+                self.create_font_object()
 
         @property
         def text(self):
@@ -558,8 +586,10 @@ class Gui:
 
         @text.setter
         def text(self, value):
+            prev_value = self._text
             self._text = value
-            self.render_font()
+            if prev_value != self._text:
+                self.render_font()
 
         @property
         def antialias(self):
@@ -567,8 +597,10 @@ class Gui:
 
         @antialias.setter
         def antialias(self, value):
+            prev_value = self._antialias
             self._antialias = value
-            self.render_font()
+            if prev_value != self._antialias:
+                self.render_font()
 
         @property
         def col(self):
@@ -576,8 +608,10 @@ class Gui:
 
         @col.setter
         def col(self, value):
+            prev_value = self._col
             self._col = value
-            self.render_font()
+            if prev_value != self._col:
+                self.render_font()
 
         @property
         def text_align(self):
@@ -585,7 +619,10 @@ class Gui:
 
         @text_align.setter
         def text_align(self, value):
+            prev_value = self._text_align
             self._text_align = align_handler(value)
+            if prev_value != self._text_align:
+                self.calculate_pos()
 
         def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
             canvas.blit(self.rendered_font, self._draw_pos + parent_absolute_pos)
