@@ -5,7 +5,7 @@ import shared_assets
 
 class Server:
     # Should the player join the server when they start the game, or when they join the lobby?
-    DEFAULT_PORT = assets.port
+    DEFAULT_PORT = shared_assets.port
 
     def __init__(self, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -37,5 +37,5 @@ def listen_for_players():
 
 
 if __name__ == "__main__":
-    server = Server(assets.port)
+    server = Server(shared_assets.port)
     listen_for_players()

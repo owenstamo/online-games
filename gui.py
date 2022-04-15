@@ -6,6 +6,8 @@ from types import FunctionType
 import pygame
 import copy
 
+# Kinda need to figure out the deal with immutable verts vs verts, tuples vs lists, etc.
+
 def get_list_of_input(inp: any) -> list:
     """
     Converts the input value into a list. Will simply convert input to list type if already a sequence. Will return empty list if input is None.
@@ -38,7 +40,7 @@ class Gui:
         def __add__(self, other):
             if isinstance(other, ImmutableVert):
                 return Gui.BoundingBox(self.pos + other, self.size)
-            elif isinstance(other, Gui.BoundingBox)
+            elif isinstance(other, Gui.BoundingBox):
                 return Gui.BoundingBox(self.pos + other.pos, self.size + other.size)
             else:
                 return TypeError(f"Cannot add type {type(other)} to BoundingBox")
@@ -243,17 +245,14 @@ class Gui:
                 self.parent.reevaluate_bounding_box()
 
         def get_element_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0)):
-            mouse_over = None
             if self.active:
-                # TODO: This can be sped up by looping over contents in reverse and selecting the first mouse_over
-                for element in self.contents:
-                    if element.mouse_over(mouse_pos, self._pos + parent_absolute_pos):
-                        mouse_over = element
+                for element in reversed(self.contents):
                     if isinstance(element, Gui.ContainerElement):
                         if element_over := element.get_element_over(mouse_pos):
-                            mouse_over = element_over
-
-            return mouse_over
+                            return element_over
+                    if element.mouse_over(mouse_pos, self._pos + parent_absolute_pos):
+                        return element
+            return None
 
         def draw(self, canvas: pygame.surface, parent_absolute_pos=Vert(0, 0), force_draw: bool = False):
             super().draw(canvas, parent_absolute_pos, force_draw)
@@ -362,12 +361,9 @@ class Gui:
             else:
                 raise TypeError("Drag boundary must be of type GuiElement, BoundingBox, or None.")
 
-            print(self.drag_parent, self._drag_boundary)
             for drag_parent_size, boundary_size in zip(self.drag_parent.bounding_box.size, self._drag_boundary.size):
                 if drag_parent_size > boundary_size:
                     raise ValueError(f"At least one value in the drag parent's size ({drag_parent_size}) is bigger than its corresponding value in the boundary's size ({boundary_size})")
-            print(self.drag_parent.bounding_box)
-            print(self._drag_boundary)
 
         # def reset_interactable(self):
         #     if any(self.mouse_buttons_holding):
@@ -489,7 +485,6 @@ class Gui:
             :param antialias: Whether the text should be drawn with antialias
             """
 
-            # TODO: Bold?
             self._pos = pos
             self._draw_pos = Vert(0, 0)
             self.rendered_size = Vert(0, 0)
@@ -600,14 +595,13 @@ class Gui:
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
 
-# TODO: Add description
-# Pass this into an element's on_draw
 def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = None,
                              align: list[str, str] = ("CENTER", "CENTER"),
                              constant_offset: Vert = Vert(0, 0),
                              offset_scaled_by_element: Vert = Vert(0, 0),
                              offset_scaled_by_parent: Vert = Vert(0, 0)):
     """
+    Returns a function to be called before an element is drawn, that sets the elements position depending on the parameters passed.
 
     :param element_centered_on: The element to center on. Leave blank for parent.
     :param align: What part of the parent to center on. Horizontal options: "LEFT", "CENTER", "RIGHT". Vertical options: "TOP", "CENTER", "BOTTOM".
@@ -642,13 +636,11 @@ class MouseEventHandler:
         self.mouse_down = self.p_mouse_down = pygame.mouse.get_pressed(3)
         self.mouse_pos = self.p_mouse_pos = Vert(pygame.mouse.get_pos())
 
-        # TODO: Run this through input-to-list
-        self.main_funcs = list(main) if isinstance(main, Sequence) else [main]
-        self.on_mouse_down_funcs = list(on_mouse_down) if isinstance(on_mouse_down, Sequence) else [on_mouse_down]
-        self.on_mouse_up_funcs = list(on_mouse_up) if isinstance(on_mouse_up, Sequence) else [on_mouse_up]
-        self.while_mouse_down_funcs = list(while_mouse_down) if isinstance(while_mouse_down, Sequence) else \
-            [while_mouse_down]
-        self.while_mouse_up_funcs = list(while_mouse_up) if isinstance(while_mouse_up, Sequence) else [while_mouse_up]
+        self.main_funcs = get_list_of_input(main)
+        self.on_mouse_down_funcs = get_list_of_input(on_mouse_down)
+        self.on_mouse_up_funcs = get_list_of_input(on_mouse_up)
+        self.while_mouse_down_funcs = get_list_of_input(while_mouse_down)
+        self.while_mouse_up_funcs = get_list_of_input(while_mouse_up)
 
     def main(self, *_):
         self.mouse_down = pygame.mouse.get_pressed(3)
