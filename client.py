@@ -41,6 +41,9 @@ def button_on_mouse_up(element, _):
         MainMenu.set_active_gui(MainMenu.main_menu_gui)
 
 class MainMenu:
+    """
+
+    """
     button_default_color = (210,) * 3
     button_mouse_holding_color = (150,) * 3
     button_mouse_over_color = (190,) * 3

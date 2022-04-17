@@ -631,6 +631,8 @@ class Gui:
         def bounding_box_ignoring_children(self):
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
+    class TextInput(GuiElement, )
+
 
 def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = None,
                              align: list[str, str] = ("CENTER", "CENTER"),
@@ -835,3 +837,10 @@ class GuiMouseEventHandler(MouseEventHandler):
             if element_holding and isinstance(element_holding, Gui.MouseInteractable):
                 for gui_while_mouse_down_func in element_holding.while_mouse_down:
                     gui_while_mouse_down_func(element_holding, buttons)
+
+class KeyboardEventHandler:
+    ...
+
+class GuiKeyboardEventHandler(KeyboardEventHandler):
+    def __init__(self):
+        self.element_typing_in = None
