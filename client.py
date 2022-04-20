@@ -1,6 +1,6 @@
 import pygame
 
-from gui import Gui, GuiMouseEventHandler, get_auto_center_function
+from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboardEventHandler
 # from network import Network
 # import assets
 from utilities import Colors, Vert
@@ -12,7 +12,8 @@ clock = pygame.time.Clock()
 canvas_active = True
 
 def button_on_mouse_over(element):
-    element.col = MainMenu.button_mouse_over_color
+    if not any(element.mouse_buttons_holding):
+        element.col = MainMenu.button_mouse_over_color
 
 def button_on_mouse_not_over(element):
     if not any(element.mouse_buttons_holding):
@@ -21,12 +22,15 @@ def button_on_mouse_not_over(element):
 def button_on_mouse_down(element, _):
     element.col = MainMenu.button_mouse_holding_color
 
-def button_on_mouse_up(element, _):
+def button_on_mouse_up(element, *_):
     global canvas_active
     if element.mouse_is_over:
         element.col = MainMenu.button_mouse_over_color
     else:
         element.col = MainMenu.button_default_color
+
+    if not element.is_contained_under(MainMenu.gui_active) or mouse_event_handler.element_over is not element:
+        return
 
     if element is MainMenu.create_lobby_button:
         ...
@@ -60,7 +64,7 @@ class MainMenu:
         "on_mouse_not_over": button_on_mouse_not_over
     }
     new_text_parameters = {
-        "on_draw_before": get_auto_center_function(offset_scaled_by_element=Vert(0, 0.05))
+        "on_draw_before": get_auto_center_function(offset_scaled_by_element_height=Vert(0, 0.05))
     }
     for i, title in enumerate(main_menu_button_list):
         main_menu_button_list[i] = Gui.Rect(**new_button_parameters)
@@ -68,6 +72,8 @@ class MainMenu:
     create_lobby_button, join_lobby_button, options_button, exit_button = main_menu_button_list
 
     game_title = Gui.Text("GAME :>")
+
+    # TODO: I tried to make a child of create_lobby_button with drag_parent=create_lobby_button & it crashed
 
     main_menu_gui.add_element(main_menu_button_list + [game_title])
     # endregion
@@ -118,7 +124,10 @@ class MainMenu:
 
 
 MainMenu.resize_elements()
-mouse_event_handler = GuiMouseEventHandler()
+keyboard_event_handler = GuiKeyboardEventHandler()
+mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
+
+MainMenu.main_menu_gui.add_element(text_input := Gui.TextInput(Vert(20, 20), Vert(200, 50), max_text_length=10))
 
 
 def main():
@@ -128,11 +137,13 @@ def main():
         MainMenu.gui_active.draw(canvas)
 
     mouse_event_handler.main(MainMenu.gui_active)
+    keyboard_event_handler.main(MainMenu.gui_active)
 
 def game_loop():
     global canvas_active
     while canvas_active:
         for event in pygame.event.get():
+            keyboard_event_handler.handle_pygame_keyboard_event(event)
             if event.type == pygame.QUIT:
                 # TODO: Disconnect from lobby when this runs
                 canvas_active = False

@@ -1,6 +1,6 @@
 Main Menu:
     - Username
-    - Find lobbies (can't press if no username)
+    - Multiplayer (can't press if no username)
         - Create lobby (or do you want to make this its own option?)
             - Put in name
         - Join lobby (lobbies are in a list. double click or select and press "join lobby" to join)

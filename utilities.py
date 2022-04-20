@@ -107,6 +107,9 @@ class ImmutableVert:
         else:
             raise ValueError("Can only add numbers or other vertices")
 
+    def __radd__(self, other):
+        return self + other
+
     def __mul__(self, other):
         if isinstance(other, ImmutableVert):
             if self.len != other.len:
@@ -116,6 +119,9 @@ class ImmutableVert:
             return self.vert_type([component * other for component in self._list])
         else:
             raise ValueError("Can only multiply numbers or other vertices")
+
+    def __rmul__(self, other):
+        return self * other
 
     def __sub__(self, other):
         if isinstance(other, ImmutableVert):
@@ -127,6 +133,9 @@ class ImmutableVert:
         else:
             raise ValueError("Can only subtract numbers or other vertices")
 
+    def __rsub__(self, other):
+        return self * (-1) + other
+
     def __truediv__(self, other):
         if isinstance(other, ImmutableVert):
             if self.len != other.len:
@@ -134,6 +143,14 @@ class ImmutableVert:
             return self.vert_type([self._list[i] / other.list[i] for i in range(self.len)])
         elif isinstance(other, (float, int)):
             return self.vert_type([component / other for component in self._list])
+        else:
+            raise ValueError("Can only divide by numbers or other vertices")
+
+    def __rtruediv__(self, other):
+        if isinstance(other, ImmutableVert):
+            return self / other
+        elif isinstance(other, (float, int)):
+            return self.vert_type([other / component for component in self._list])
         else:
             raise ValueError("Can only divide by numbers or other vertices")
 
