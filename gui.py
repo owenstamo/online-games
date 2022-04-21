@@ -501,10 +501,12 @@ class Gui:
                 self.reevaluate_bounding_box()
 
     class Text(GuiElement):
+        HEIGHT_ADJUSTMENT = Vert(0, 0.05)
+
         def __init__(self, text: str, pos: ImmutableVert = ImmutableVert(0, 0), font_size: int = 0,
                      font: str = "calibri", col: Tuple[int, int, int] = (0, 0, 0),
                      text_align: Sequence[str, str] = ("CENTER", "CENTER"),
-                     antialias: bool = True, ignore_bounding_box=True, **kwargs):
+                     antialias: bool = True, ignore_bounding_box=True, adjust_height=True, **kwargs):
             """
             A gui element that can be drawn as text. A subclass of GuiElement.
 
@@ -515,11 +517,13 @@ class Gui:
             :param col: Where the text should be drawn from
             :param text_align: Where the text will be drawn from. Horizontal options: "LEFT", "CENTER", "RIGHT". Vertical options: "TOP", "CENTER", "BOTTOM".
             :param antialias: Whether the text should be drawn with antialias
+            :param adjust_height: TODO
             """
 
             self._pos = pos
             self._draw_pos = Vert(0, 0)
             self.rendered_size = Vert(0, 0)
+            self.adjust_height = adjust_height
             super().__init__(self._pos, ignore_bounding_box=ignore_bounding_box, **kwargs)
 
             self._text_align = align_handler(text_align)
@@ -529,8 +533,9 @@ class Gui:
 
             self._font_size = int(font_size)
             self._font = font
-            self.font_object = self.rendered_font = None
+            self.font_object = self.rendered_font = self.size_per_font_size = None
             self.create_font_object()
+            self.calculate_size_per_font_size()
 
         def calculate_pos(self):
             """
@@ -538,7 +543,15 @@ class Gui:
             """
             offsets = {"LEFT": 0, "TOP": 0, "CENTER": 0.5, "RIGHT": 1, "BOTTOM": 1}
             self._draw_pos = self._pos - self.rendered_size * Vert([offsets[align] for align in self._text_align])
+            if self.adjust_height:
+                self._draw_pos += self.rendered_size * self.HEIGHT_ADJUSTMENT
             self.reevaluate_bounding_box()
+
+        def calculate_size_per_font_size(self):
+            size_per_font_size_detail = 20
+            self.size_per_font_size = Vert(pygame.font.SysFont(self._font, size_per_font_size_detail)
+                                           .render(self._text, False, (255, 255, 255))
+                                           .get_size()) / size_per_font_size_detail
 
         def render_font(self):
             """
@@ -589,6 +602,7 @@ class Gui:
             self._font = value
             if prev_value != self._font:
                 self.create_font_object()
+                self.calculate_size_per_font_size()
 
         @property
         def text(self):
@@ -600,6 +614,7 @@ class Gui:
             self._text = value
             if prev_value != self._text:
                 self.render_font()
+                self.calculate_size_per_font_size()
 
         @property
         def antialias(self):
@@ -642,22 +657,33 @@ class Gui:
         def bounding_box_ignoring_children(self):
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
-    # Do I want to make the textinput have a background?
-    # What do I do about overflow? Should I make the text smaller to fit?
     class TextInput(Rect, MouseInteractable):
-        # TODO: Let user hold down keys/backspace to type multiple, rescale text to fit within box
+        # TODO: rescale text to fit within box
         #  maybe add a get_rendered_size_not_proportional_to_font_size or something like that
         SHIFTED_CHARS = {lower: upper for lower, upper in
-                         zip("`1234567890-=qwertyuiop[]\asdfghjkl;'zxcvbnm,./",
-                             '~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>?')}
+                         zip(r"`1234567890-=qwertyuiop[]\asdfghjkl;'zxcvbnm,./",
+                             r'~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>?')}
+
         ALPHABET_LOWER = "abcdefghijklmnopqrstuvwxyz"
         ALPHABET_UPPER = ALPHABET_LOWER.upper()
         ALPHABET = ALPHABET_UPPER + ALPHABET_LOWER
         NUMBERS = "1234567890"
-        USERNAMES = ALPHABET + NUMBERS + "_"
-        WHOLE_KEYBOARD = list(SHIFTED_CHARS.keys()) + list(SHIFTED_CHARS.items())
+        USERNAME_CHARS = ALPHABET + NUMBERS + "_"
+        WHOLE_KEYBOARD = tuple(SHIFTED_CHARS.keys()) + tuple(SHIFTED_CHARS.items())
 
         def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+            estimated_default_size = self.text_element.size_per_font_size * self.default_font_size
+            bounding_box_size = self.bounding_box.size - Vert(self.text_padding, 0) * 2
+            # TODO: Make a custom left & right padding for text
+            if estimated_default_size.x > bounding_box_size.x:
+                self.text_element.font_size = self.default_font_size * (bounding_box_size.x /
+                                                                        estimated_default_size.x)
+            elif self.text_element.font_size != self.default_font_size:
+                self.text_element.font_size = self.default_font_size
+            # if self.text_element.size_per_font_size *
+            # if self.text_element.bounding_box.size.x > self.bounding_box.size.x:
+            #     self.text_element.font_size = int(self.default_font_size * \
+            #                                       text_element.bounding_box.size.x)
             super().draw_element(canvas, parent_absolute_pos)
 
             # if self is selected:
@@ -675,36 +701,86 @@ class Gui:
                                  text_bounding_box.top_right.list, text_bounding_box.bottom_right.list,
                                  int(self.cursor_width_multiplier * self.text_element.font_size / 15))
 
-        def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), valid_chars=USERNAMES,
-                     cursor_width_multiplier: float = 1, cursor_blink_secs: float = 0.75,
-                     max_text_length: Union[int, None] = None, **kwargs):
-            Gui.Rect.__init__(self, pos, size, **kwargs)
+        def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), valid_chars=WHOLE_KEYBOARD,
+                     default_text: str = "", max_text_length: Union[int, None] = None, horizontal_align="LEFT",
+                     cursor_width_multiplier: float = 1, cursor_blink_secs: float = 0.75, **kwargs):
+            Gui.Rect.__init__(self, pos, **kwargs)
 
-            self.text_element = Gui.Text("HELLO", text_align=["LEFT", "CENTER"], font_size=size.y * 0.75,
+            horizontal_align = horizontal_align.upper()
+            if horizontal_align not in ["LEFT", "CENTER", "RIGHT"]:
+                raise ValueError("Horizontal align must be: LEFT, CENTER, or RIGHT.")
+
+            self.max_text_length = math.inf if max_text_length is None else max_text_length
+            self.has_been_selected_yet = False
+            self.default_text = default_text
+
+            # Number to be multiplied by this element's text's height to find its left and right padding
+            self.text_padding_scalar = 0.25
+            text_offset = {"LEFT": Vert(self.text_padding_scalar, 0),
+                           "CENTER": Vert(0, 0),
+                           "RIGHT": Vert(-self.text_padding_scalar, 0)}[horizontal_align]
+            self.text_element = Gui.Text(default_text,
+                                         text_align=[horizontal_align, "CENTER"],
                                          on_draw_before=get_auto_center_function(
-                align=["LEFT", "CENTER"], offset_scaled_by_element_height=Vert(0.25, 0.05)))
+                                             align=[horizontal_align, "CENTER"],
+                                             offset_scaled_by_parent_height=text_offset))
+            self.size = size
             self.add_element(self.text_element)
             self.valid_chars = valid_chars
 
             self.is_selected = False
+
             self.cursor_width_multiplier = cursor_width_multiplier
             self.cursor_blink_secs: float = cursor_blink_secs
             self.cursor_active = False
             self.cursor_last_toggle = time.perf_counter()
 
-            self.max_text_length = math.inf if max_text_length is None else max_text_length
+        @property
+        def text_padding(self):
+            return self.bounding_box.size.y * self.text_padding_scalar
+
+        def reset_text(self):
+            self.has_been_selected_yet = False
+            self.text_element.text = self.default_text
+
+        def set_selected(self, selected: bool = True, button: Union[int, None] = None):
+            if selected:
+                self.is_selected = True
+                self.reset_cursor()
+                if not self.has_been_selected_yet:
+                    self.has_been_selected_yet = True
+                    self.text_element.text = ""
+                if button == 2:
+                    self.text_element.text = ""
+            else:
+                self.is_selected = False
+                if self.text_element.text == "":
+                    self.reset_text()
 
         def reset_cursor(self):
             self.cursor_last_toggle = time.perf_counter()
             self.cursor_active = True
 
-        def add_character(self, key_code: int, shift_is_down: bool = False):
+        def add_character(self, key_code: int, keys_down=()):
             if key_code > 0x10ffff:
                 return
 
-            if key_code == pygame.key.key_code("backspace") and self.text_element.text:
-                self.text_element.text = self.text_element.text[:-1]
+            shift_is_down = pygame.K_LSHIFT in keys_down or \
+                            pygame.K_RSHIFT in keys_down
+            control_is_down = pygame.K_RCTRL in keys_down or \
+                              pygame.K_LCTRL in keys_down
+
+            if key_code == pygame.K_RETURN:
+                self.set_selected(False)
+                return
+
+            if key_code == pygame.K_BACKSPACE and self.text_element.text:
+                if control_is_down:
+                    self.text_element.text = ""
+                else:
+                    self.text_element.text = self.text_element.text[:-1]
                 self.reset_cursor()
+                return
 
             key = chr(key_code)
             if shift_is_down and key in self.SHIFTED_CHARS:
@@ -712,6 +788,25 @@ class Gui:
             if key in self.valid_chars and len(self.text_element.text) < self.max_text_length:
                 self.text_element.text = self.text_element.text + key
                 self.reset_cursor()
+
+        @property
+        def size(self):
+            return self._size
+
+        @size.setter
+        def size(self, value):
+            self._size = value
+            self.default_font_size = int(value.y * 0.75)
+            self.text_element.font_size = self.default_font_size
+
+        @property
+        def text(self):
+            return self.text_element.text
+
+        @text.setter
+        def text(self, value: str):
+            self.text_element.text = value
+
 
 # TODO: Find some way to not have to call this every time an element is drawn, only when its parent bounding box changes size
 def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = None,
@@ -913,7 +1008,7 @@ class GuiMouseEventHandler(MouseEventHandler):
                 gui_on_mouse_down_func(self.element_over, button)
 
         if self.keyboard_event_handler:
-            self.keyboard_event_handler.set_element_selected(self.element_over)
+            self.keyboard_event_handler.set_element_selected(self.element_over, button)
 
     def on_mouse_up_gui(self, button: int):
         # If you add anything else in here, you need to edit the code for mouse released when handling disabling guis
@@ -933,12 +1028,22 @@ class GuiMouseEventHandler(MouseEventHandler):
                 gui_while_mouse_down_func(element_holding, button)
 
 class KeyboardEventHandler(InputHandler):
+    KEY_REPEAT_DELAY = 0.4
+    KEY_REPEAT_RATE = 0.04
+
     def __init__(self,
                  main: Union[Sequence[Callable], Callable] = (),
                  on_key_down: Union[Sequence[Callable], Callable] = (),
                  on_key_up: Union[Sequence[Callable], Callable] = (),
-                 while_key_down: Union[Sequence[Callable], Callable] = ()):
+                 while_key_down: Union[Sequence[Callable], Callable] = (),
+                 on_key_repeat: Union[Sequence[Callable], Callable] = ()):
         super().__init__(main, on_key_down, on_key_up, while_key_down)
+        self.on_key_repeat_funcs = get_list_of_input(on_key_repeat)
+
+        self.on_input_down_funcs.append(self.on_key_down)
+        self.on_input_up_funcs.append(self.on_key_up)
+        self.main_funcs.append(self.keyboard_main)
+        self.keys_down_timing = {}
 
     def handle_pygame_keyboard_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -946,9 +1051,32 @@ class KeyboardEventHandler(InputHandler):
         elif event.type == pygame.KEYUP:
             self.inputs_down.remove(event.key)
 
+    def keyboard_main(self):
+        for key in self.keys_down_timing:
+            repeat_delay = self.KEY_REPEAT_RATE if self.keys_down_timing[key]["repeating"] else self.KEY_REPEAT_DELAY
+            if time.perf_counter() - self.keys_down_timing[key]["time"] >= repeat_delay:
+                self.keys_down_timing[key]["time"] = time.perf_counter()
+                self.keys_down_timing[key]["repeating"] = True
+                self.on_key_repeat(key)
+
+    def on_key_repeat(self, key: int):
+        for on_key_repeat_func in self.on_key_repeat_funcs:
+            on_key_repeat_func(key)
+
+    def on_key_down(self, key: int):
+        self.keys_down_timing[key] = {"repeating": False, "time": time.perf_counter()}
+
+    def on_key_up(self, key: int):
+        del self.keys_down_timing[key]
+
 class GuiKeyboardEventHandler(KeyboardEventHandler):
-    def __init__(self):
-        super().__init__()
+    def __init__(self,
+                 main: Union[Sequence[Callable], Callable] = (),
+                 on_key_down: Union[Sequence[Callable], Callable] = (),
+                 on_key_up: Union[Sequence[Callable], Callable] = (),
+                 while_key_down: Union[Sequence[Callable], Callable] = (),
+                 on_key_repeat: Union[Sequence[Callable], Callable] = ()):
+        super().__init__(main, on_key_down, on_key_up, while_key_down, on_key_repeat)
         self.element_selected = None
 
         self.guis = self.p_guis = []
@@ -957,6 +1085,7 @@ class GuiKeyboardEventHandler(KeyboardEventHandler):
         self.on_input_up_funcs.append(self.on_key_up_gui)
         self.while_input_down_funcs.append(self.while_key_down_gui)
         self.main_funcs.append(self.main_gui)
+        self.on_key_repeat_funcs.append(self.on_key_repeat_gui)
 
     def main(self, active_gui: Union[Gui.GuiElement, Sequence[Gui.GuiElement], None] = None):
         """
@@ -968,24 +1097,27 @@ class GuiKeyboardEventHandler(KeyboardEventHandler):
         super().main()
         self.p_guis = self.guis
 
-    def set_element_selected(self, element_clicked):
+    def set_element_selected(self, element_clicked, button):
         if isinstance(element_clicked, Gui.TextInput) and \
                 any([element_clicked.is_contained_under(gui) for gui in self.guis]):
             self.element_selected = element_clicked
-            element_clicked.is_selected = True
-            element_clicked.reset_cursor()
+            element_clicked.set_selected(True, button)
         else:
             if self.element_selected:
-                self.element_selected.is_selected = False
+                self.element_selected.set_selected(False, button)
             self.element_selected = None
 
     def main_gui(self):
         ...
 
+    # TODO: Merge these into one and add it to key_down and key_repeat
+    def on_key_repeat_gui(self, key: int):
+        if self.element_selected:
+            self.element_selected.add_character(key, self.inputs_down)
+
     def on_key_down_gui(self, key: int):
         if self.element_selected:
-            self.element_selected.add_character(key, pygame.key.key_code("left shift") in self.inputs_down or
-                                                     pygame.key.key_code("right shift") in self.inputs_down)
+            self.element_selected.add_character(key, self.inputs_down)
 
     def on_key_up_gui(self, key: int):
         ...
