@@ -517,7 +517,7 @@ class Gui:
             :param col: Where the text should be drawn from
             :param text_align: Where the text will be drawn from. Horizontal options: "LEFT", "CENTER", "RIGHT". Vertical options: "TOP", "CENTER", "BOTTOM".
             :param antialias: Whether the text should be drawn with antialias
-            :param adjust_height: TODO
+            :param adjust_height: Whether to adjust this element's height to be more accurate (pygame usually draws text higher than what looks correct)
             """
 
             self._pos = pos
@@ -650,7 +650,6 @@ class Gui:
                 self.calculate_pos()
 
         def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
-            # TODO: Draw a tad lower
             canvas.blit(self.rendered_font, self._draw_pos + parent_absolute_pos)
 
         @property
@@ -658,8 +657,6 @@ class Gui:
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
     class TextInput(Rect, MouseInteractable):
-        # TODO: rescale text to fit within box
-        #  maybe add a get_rendered_size_not_proportional_to_font_size or something like that
         SHIFTED_CHARS = {lower: upper for lower, upper in
                          zip(r"`1234567890-=qwertyuiop[]\asdfghjkl;'zxcvbnm,./",
                              r'~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>?')}
@@ -674,16 +671,13 @@ class Gui:
         def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
             estimated_default_size = self.text_element.size_per_font_size * self.default_font_size
             bounding_box_size = self.bounding_box.size - Vert(self.text_padding, 0) * 2
-            # TODO: Make a custom left & right padding for text
+
             if estimated_default_size.x > bounding_box_size.x:
                 self.text_element.font_size = self.default_font_size * (bounding_box_size.x /
                                                                         estimated_default_size.x)
             elif self.text_element.font_size != self.default_font_size:
                 self.text_element.font_size = self.default_font_size
-            # if self.text_element.size_per_font_size *
-            # if self.text_element.bounding_box.size.x > self.bounding_box.size.x:
-            #     self.text_element.font_size = int(self.default_font_size * \
-            #                                       text_element.bounding_box.size.x)
+
             super().draw_element(canvas, parent_absolute_pos)
 
             # if self is selected:
@@ -744,6 +738,11 @@ class Gui:
             self.text_element.text = self.default_text
 
         def set_selected(self, selected: bool = True, button: Union[int, None] = None):
+            """
+            Sets this element to be selected or deselected. Note: this does not deselect this element in the KeyboardHandler. Only calling this function will still allow the user to type in this element.
+            :param selected: Whether to select or deselect this element. True: select, False: deselect.
+            :param button: What mouse button was clicked to select/deselect this element.
+            """
             if selected:
                 self.is_selected = True
                 self.reset_cursor()
@@ -769,10 +768,6 @@ class Gui:
                             pygame.K_RSHIFT in keys_down
             control_is_down = pygame.K_RCTRL in keys_down or \
                               pygame.K_LCTRL in keys_down
-
-            if key_code == pygame.K_RETURN:
-                self.set_selected(False)
-                return
 
             if key_code == pygame.K_BACKSPACE and self.text_element.text:
                 if control_is_down:
@@ -801,7 +796,7 @@ class Gui:
 
         @property
         def text(self):
-            return self.text_element.text
+            return self.text_element.text if self.has_been_selected_yet else ""
 
         @text.setter
         def text(self, value: str):
@@ -1081,11 +1076,11 @@ class GuiKeyboardEventHandler(KeyboardEventHandler):
 
         self.guis = self.p_guis = []
 
-        self.on_input_down_funcs.append(self.on_key_down_gui)
+        self.on_input_down_funcs.append(self.on_key_down_or_repeat_gui)
+        self.on_key_repeat_funcs.append(self.on_key_down_or_repeat_gui)
         self.on_input_up_funcs.append(self.on_key_up_gui)
         self.while_input_down_funcs.append(self.while_key_down_gui)
         self.main_funcs.append(self.main_gui)
-        self.on_key_repeat_funcs.append(self.on_key_repeat_gui)
 
     def main(self, active_gui: Union[Gui.GuiElement, Sequence[Gui.GuiElement], None] = None):
         """
@@ -1110,12 +1105,10 @@ class GuiKeyboardEventHandler(KeyboardEventHandler):
     def main_gui(self):
         ...
 
-    # TODO: Merge these into one and add it to key_down and key_repeat
-    def on_key_repeat_gui(self, key: int):
-        if self.element_selected:
-            self.element_selected.add_character(key, self.inputs_down)
-
-    def on_key_down_gui(self, key: int):
+    def on_key_down_or_repeat_gui(self, key: int):
+        if self.element_selected and \
+                not any([self.element_selected.is_active_under(gui) for gui in self.guis]):
+            self.element_selected = None
         if self.element_selected:
             self.element_selected.add_character(key, self.inputs_down)
 

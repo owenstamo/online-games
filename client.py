@@ -21,7 +21,7 @@ def element_on_mouse_not_over(element):
         element.col = MainMenu.text_input_default_color if isinstance(element, Gui.TextInput) \
             else MainMenu.button_default_color
 
-def element_on_mouse_down(element, _):
+def element_on_mouse_down(element, *_):
     element.col = MainMenu.text_input_mouse_holding_color if isinstance(element, Gui.TextInput) \
         else MainMenu.button_mouse_holding_color
 
@@ -37,10 +37,11 @@ def element_on_mouse_up(element, *_):
     if not element.is_contained_under(MainMenu.gui_active) or mouse_event_handler.element_over is not element:
         return
 
-    if element is MainMenu.username_text_field:
-        ...
-    elif element is MainMenu.multiplayer_button:
-        MainMenu.set_active_gui(MainMenu.lobby_list_gui)
+    if element is MainMenu.multiplayer_button:
+        if MainMenu.username_text_field.text != "":
+            MainMenu.set_active_gui(MainMenu.lobby_list_gui)
+        else:
+            MainMenu.username_text_field.col = MainMenu.text_input_error_color
     elif element is MainMenu.options_button:
         MainMenu.set_active_gui(MainMenu.options_gui)
     elif element is MainMenu.exit_button:
@@ -60,6 +61,7 @@ class MainMenu:
     text_input_default_color = (255,) * 3
     text_input_mouse_holding_color = (230,) * 3
     text_input_mouse_over_color = (245,) * 3
+    text_input_error_color = (255, 240, 240)
 
     # region Main Menu Gui
     main_menu_gui = Gui.ContainerElement(Vert(0, 0))
@@ -139,6 +141,7 @@ class MainMenu:
 MainMenu.resize_elements()
 keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
+
 
 def main():
     canvas.fill(Colors.light_gray)
