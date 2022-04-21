@@ -49,6 +49,7 @@ def element_on_mouse_up(element, *_):
     elif element is MainMenu.options_back_button:
         MainMenu.set_active_gui(MainMenu.main_menu_gui)
 
+# TODO: Do I want to make each individual menu its own class, and inherit from one main Menu class? Could be a good idea.
 class MainMenu:
     """
 
@@ -58,6 +59,7 @@ class MainMenu:
     button_mouse_holding_color = (150,) * 3
     button_mouse_over_color = (190,) * 3
 
+    # Do I want to make TextInput be constantly darker while selected, instead of just when held?
     text_input_default_color = (255,) * 3
     text_input_mouse_holding_color = (230,) * 3
     text_input_mouse_over_color = (245,) * 3

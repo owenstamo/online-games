@@ -7,7 +7,9 @@ import pygame
 import copy
 
 # Kinda need to figure out the deal with immutable verts vs verts, tuples vs lists, etc.
-# TODO: Figure out immutable verts
+# TODO: Make immutable immutable verts good (like a child of vert or something pls)
+# TODO: Add gui elements you can scroll in (I'm sorry future me)
+#        Or just don't. That's an equally valid thing to do.
 
 def get_list_of_input(inp: any) -> list:
     """
@@ -739,7 +741,7 @@ class Gui:
 
         def set_selected(self, selected: bool = True, button: Union[int, None] = None):
             """
-            Sets this element to be selected or deselected. Note: this does not deselect this element in the KeyboardHandler. Only calling this function will still allow the user to type in this element.
+            Sets this element to be selected or deselected. Note: this does not deselect this element in the KeyboardHandler. I.e. Calling only this function will still allow the user to type in this element.
             :param selected: Whether to select or deselect this element. True: select, False: deselect.
             :param button: What mouse button was clicked to select/deselect this element.
             """
