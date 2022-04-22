@@ -1,5 +1,6 @@
 import pygame
-
+from abc import ABC, abstractmethod
+from typing import Union
 from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboardEventHandler
 # from network import Network
 # import assets
@@ -11,150 +12,181 @@ pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
 
-def element_on_mouse_over(element):
-    if not any(element.mouse_buttons_holding):
-        element.col = MainMenu.text_input_mouse_over_color if isinstance(element, Gui.TextInput) \
-            else MainMenu.button_mouse_over_color
+# TODO: Do I want to make each individual menu its own class, and inherit from one main Menu class?
+# Make a class that contains all the other classes + any extra vars
 
-def element_on_mouse_not_over(element):
-    if not any(element.mouse_buttons_holding):
-        element.col = MainMenu.text_input_default_color if isinstance(element, Gui.TextInput) \
-            else MainMenu.button_default_color
+class Menus:
+    class Menu(ABC):
+        button_default_color = (210,) * 3
+        button_mouse_holding_color = (150,) * 3
+        button_mouse_over_color = (190,) * 3
 
-def element_on_mouse_down(element, *_):
-    element.col = MainMenu.text_input_mouse_holding_color if isinstance(element, Gui.TextInput) \
-        else MainMenu.button_mouse_holding_color
+        # Do I want to make TextInput be constantly darker while selected, instead of just when held?
+        text_input_default_color = (255,) * 3
+        text_input_mouse_holding_color = (230,) * 3
+        text_input_mouse_over_color = (245,) * 3
+        text_input_error_color = (255, 240, 240)
 
-def element_on_mouse_up(element, *_):
-    global canvas_active
-    if element.mouse_is_over:
-        element.col = MainMenu.text_input_mouse_over_color if isinstance(element, Gui.TextInput) \
-            else MainMenu.button_mouse_over_color
-    else:
-        element.col = MainMenu.text_input_default_color if isinstance(element, Gui.TextInput) \
-            else MainMenu.button_default_color
+        def __init__(self):
+            self.gui = Gui.ContainerElement(Vert(0, 0))
 
-    if not element.is_contained_under(MainMenu.gui_active) or mouse_event_handler.element_over is not element:
-        return
+            def element_on_mouse_over(element):
+                if not any(element.mouse_buttons_holding):
+                    element.col = self.text_input_mouse_over_color if isinstance(element, Gui.TextInput) \
+                        else self.button_mouse_over_color
 
-    if element is MainMenu.multiplayer_button:
-        if MainMenu.username_text_field.text != "":
-            MainMenu.set_active_gui(MainMenu.lobby_list_gui)
-        else:
-            MainMenu.username_text_field.col = MainMenu.text_input_error_color
-    elif element is MainMenu.options_button:
-        MainMenu.set_active_gui(MainMenu.options_gui)
-    elif element is MainMenu.exit_button:
-        canvas_active = False
-    elif element is MainMenu.options_back_button:
-        MainMenu.set_active_gui(MainMenu.main_menu_gui)
+            def element_on_mouse_not_over(element):
+                if not any(element.mouse_buttons_holding):
+                    element.col = self.text_input_default_color if isinstance(element, Gui.TextInput) \
+                        else self.button_default_color
 
-# TODO: Do I want to make each individual menu its own class, and inherit from one main Menu class? Could be a good idea.
-class MainMenu:
-    """
+            def element_on_mouse_down(element, *_):
+                element.col = self.text_input_mouse_holding_color if isinstance(element, Gui.TextInput) \
+                    else self.button_mouse_holding_color
 
-    """
+            def element_on_mouse_up(element, *_):
+                if element.mouse_is_over:
+                    element.col = self.text_input_mouse_over_color if isinstance(element, Gui.TextInput) \
+                        else self.button_mouse_over_color
+                else:
+                    element.col = self.text_input_default_color if isinstance(element, Gui.TextInput) \
+                        else self.button_default_color
 
-    button_default_color = (210,) * 3
-    button_mouse_holding_color = (150,) * 3
-    button_mouse_over_color = (190,) * 3
 
-    # Do I want to make TextInput be constantly darker while selected, instead of just when held?
-    text_input_default_color = (255,) * 3
-    text_input_mouse_holding_color = (230,) * 3
-    text_input_mouse_over_color = (245,) * 3
-    text_input_error_color = (255, 240, 240)
+            self.element_mouse_functions = {
+                "on_mouse_down": [element_on_mouse_down],
+                "on_mouse_up": [element_on_mouse_up],
+                "on_mouse_over": [element_on_mouse_over],
+                "on_mouse_not_over": [element_on_mouse_not_over]
+            }
 
-    # region Main Menu Gui
-    main_menu_gui = Gui.ContainerElement(Vert(0, 0))
+        new_text_parameters = {
+            "on_draw_before": get_auto_center_function()
+        }
 
-    element_mouse_functions = {
-        "on_mouse_down": element_on_mouse_down,
-        "on_mouse_up": element_on_mouse_up,
-        "on_mouse_over": element_on_mouse_over,
-        "on_mouse_not_over": element_on_mouse_not_over
-    }
-    new_text_parameters = {
-        "on_draw_before": get_auto_center_function(),
-    }
-    main_menu_button_list = [Gui.TextInput(col=text_input_default_color,
-                                           valid_chars=Gui.TextInput.USERNAME_CHARS,
-                                           default_text="Username",
-                                           max_text_length=18,
-                                           horizontal_align="CENTER",
-                                           **element_mouse_functions)]
-    for title in ["Multiplayer", "Options", "Exit"]:
-        main_menu_button_list.append(new_button := Gui.Rect(col=button_default_color, **element_mouse_functions))
-        new_button.add_element(Gui.Text(title, **new_text_parameters))
-    username_text_field, multiplayer_button, options_button, exit_button = main_menu_button_list
+        @abstractmethod
+        def resize_elements(self):
+            ...
 
-    game_title = Gui.Text("GAME :>")
+    class TitleScreenMenu(Menu):
 
-    # TODO: I tried to make a child of create_lobby_button with drag_parent=create_lobby_button & it crashed
+        def __init__(self):
+            super().__init__()
 
-    main_menu_gui.add_element(main_menu_button_list + [game_title])
-    # endregion
+            def element_on_mouse_up(element, *_):
+                global canvas_active
 
-    # region Options Gui
-    options_gui = Gui.ContainerElement(Vert(0, 0))
+                if element is not mouse_event_handler.element_over:  # or Menus.menu_active is not self:
+                    # Commented out code makes sure that if the user switches guis while holding the element, it will ignore that
+                    # element's on_mouse_up. Unnecessary since checking if the mouse is over the element automatically handles this.
+                    return
 
-    options_button_list = ["Keybinds", "Other Option", "Option 3", "Back"]
-    for i, title in enumerate(options_button_list):
-        options_button_list[i] = Gui.Rect(col=button_default_color, **element_mouse_functions)
-        options_button_list[i].add_element(Gui.Text(title, **new_text_parameters))
-    options_keybinds_button, _, _, options_back_button = options_button_list
+                if element is self.multiplayer_button:
+                    if self.username_text_field.text != "":
+                        Menus.set_active_menu(InitializedMenus.multiplayer_menu)
+                    else:
+                        self.username_text_field.col = self.text_input_error_color
+                elif element is self.options_button:
+                    Menus.set_active_menu(InitializedMenus.options_menu)
+                elif element is self.exit_button:
+                    canvas_active = False
 
-    options_gui.add_element(options_button_list)
-    # endregion
+            self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
-    # region Lobby List Gui
-    lobby_list_gui = Gui.ContainerElement(Vert(0, 0))
-    # endregion
+            self.button_list = [Gui.TextInput(
+                col=self.text_input_default_color, valid_chars=Gui.TextInput.USERNAME_CHARS,
+                default_text="Username", max_text_length=18, horizontal_align="CENTER", **self.element_mouse_functions
+            )]
 
-    gui_active = main_menu_gui
+            for title in ["Multiplayer", "Options", "Exit"]:
+                self.button_list.append(
+                    new_button := Gui.Rect(col=self.button_default_color, **self.element_mouse_functions))
+                new_button.add_element(Gui.Text(title, **self.new_text_parameters))
+            self.username_text_field, self.multiplayer_button, self.options_button, self.exit_button = \
+                self.button_list
 
-    @classmethod
-    def resize_elements(cls):
-        canvas_size = Vert(canvas.get_size())
+            self.game_title = Gui.Text("GAME :>")
 
-        if cls.gui_active is cls.main_menu_gui:
-            cls.game_title.pos = canvas_size * Vert(0.5, (2.5 / 2) / 7)
-            cls.game_title.font_size = 75 * min(1, canvas_size.x / 450)
+            # TODO: I tried to make a child of create_lobby_button with drag_parent=create_lobby_button & it crashed
 
-            for i, button in enumerate(cls.main_menu_button_list):
+            self.gui.add_element(self.button_list + [self.game_title])
+
+        def resize_elements(self):
+            canvas_size = Vert(canvas.get_size())
+            self.game_title.pos = canvas_size * Vert(0.5, (2.5 / 2) / 7)
+            self.game_title.font_size = 75 * min(1, canvas_size.x / 450)
+
+            for i, button in enumerate(self.button_list):
                 button.size = Vert(400, 50) * min(1, canvas_size.x / 450)
                 button.pos = canvas_size * Vert(0.5, (2.5 + i) / 7) - Vert(button.size.x / 2, 0)
 
                 button.contents[0].font_size = button.size.y * 0.75
 
-        elif cls.gui_active is cls.options_gui:
-            for i, button in enumerate(cls.options_button_list):
+    class OptionsMenu(Menu):
+        def __init__(self):
+            super().__init__()
+
+            def element_on_mouse_up(element, *_):
+
+                if element is self.options_back_button:
+                    Menus.set_active_menu(InitializedMenus.title_screen_menu)
+
+            self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
+
+            self.button_list = []
+            for title in ["Keybinds", "Other Option", "Option 3", "Back"]:
+                self.button_list.append(
+                    new_button := Gui.Rect(col=self.button_default_color, **self.element_mouse_functions))
+                new_button.add_element(Gui.Text(title, **self.new_text_parameters))
+            self.options_keybinds_button, _, _, self.options_back_button = self.button_list
+
+            self.gui.add_element(self.button_list)
+
+        def resize_elements(self):
+            canvas_size = Vert(canvas.get_size())
+
+            for i, button in enumerate(self.button_list):
                 button.size = Vert(400, 50) * min(1, canvas_size.x / 450)
                 button.pos = canvas_size * Vert(0.5, 0.2 * (1 + i)) - button.size / 2
 
                 button.contents[0].font_size = button.size.y * 0.75
 
+    class MultiplayerMenu(Menu):
+        def __init__(self):
+            super().__init__()
+
+        def resize_elements(self):
+            ...
+
     @classmethod
-    def set_active_gui(cls, value):
-        cls.gui_active = value
-        cls.resize_elements()
+    def set_active_menu(cls, value):
+        cls.menu_active = value
+        cls.menu_active.resize_elements()
+
+    menu_active: Union[Menu, None] = None
+
+class InitializedMenus:
+    title_screen_menu = Menus.TitleScreenMenu()
+    options_menu = Menus.OptionsMenu()
+    multiplayer_menu = Menus.MultiplayerMenu()
+
+    Menus.set_active_menu(title_screen_menu)
 
 
-MainMenu.resize_elements()
 keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 
-def main():
+def on_frame():
     canvas.fill(Colors.light_gray)
 
-    if MainMenu.gui_active:
-        MainMenu.gui_active.draw(canvas)
+    if Menus.menu_active:
+        Menus.menu_active.gui.draw(canvas)
 
-    mouse_event_handler.main(MainMenu.gui_active)
-    keyboard_event_handler.main(MainMenu.gui_active)
+    mouse_event_handler.main(Menus.menu_active.gui)
+    keyboard_event_handler.main(Menus.menu_active.gui)
 
-def game_loop():
+def main():
     global canvas_active
     while canvas_active:
         for event in pygame.event.get():
@@ -163,9 +195,9 @@ def game_loop():
                 # TODO: Disconnect from lobby when this runs
                 canvas_active = False
             elif event.type == pygame.WINDOWRESIZED:
-                MainMenu.resize_elements()
+                Menus.menu_active.resize_elements()
 
-        main()
+        on_frame()
 
         clock.tick(60)
         pygame.display.flip()
@@ -173,4 +205,4 @@ def game_loop():
 
 if __name__ == "__main__":
     # network = Network()
-    game_loop()
+    main()
