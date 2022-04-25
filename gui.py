@@ -792,9 +792,15 @@ class Gui:
 
         @size.setter
         def size(self, value):
-            self._size = value
+            prev_value = self._size
+            self._size = ImmutableVert(value)
+
             self.default_font_size = int(value.y * 0.75)
             self.text_element.font_size = self.default_font_size
+
+            if prev_value != self._size:
+                self.reevaluate_bounding_box()
+
 
         @property
         def text(self):
@@ -840,6 +846,21 @@ def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = 
                       constant_offset
 
     return auto_center
+
+def get_auto_font_size_function(element_under: Union[Gui.GuiElement, None] = None,
+                                constant_size: float = 0,
+                                size_scaled_by_parent_width: float = 0,
+                                size_scaled_by_parent_height: float = 0):
+    def auto_center(element: Gui.Text, _):
+        bounding_box = element_under.bounding_box if element_under else element.parent.bounding_box
+        if not bounding_box:
+            bounding_box = Gui.BoundingBox(Vert(0, 0), Vert(0, 0))
+        element.font_size = int(constant_size + \
+                                bounding_box.size.x * size_scaled_by_parent_width + \
+                                bounding_box.size.y * size_scaled_by_parent_height)
+
+    return auto_center
+
 
 class InputHandler:
     # The code for MouseEventHandler and KeyboardEventHandler is almost identical, the only difference is how
