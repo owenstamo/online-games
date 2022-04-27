@@ -183,7 +183,7 @@ class Menus:
                         if not any(element.mouse_buttons_holding):
                             self.list_gui_element.col = self.LOBBY_LIST_ELEMENT_DEFAULT_COLOR
 
-                def on_mouse_down(element, *_):
+                def on_mouse_down(*_):
                     self.list_gui_element.col = self.LOBBY_LIST_ELEMENT_MOUSE_HOLDING_COLOR
 
                 def on_mouse_up(element, *_):
@@ -243,10 +243,12 @@ class Menus:
 
             @lobby_data.setter
             def lobby_data(self, value):
+                if value.lobby_id != self.lobby_id:
+                    raise ValueError("Tried to set lobby to another without a matching ID")
                 self.name = value.name
                 self.owner = value.owner
                 self.selected_game = value.selected_game
-                self.player_count = value.player_count
+                self.players = value.players
 
             @property
             def name(self):
@@ -268,7 +270,7 @@ class Menus:
                 if value == self.lobby_data.owner:
                     return
                 self.lobby_data.owner = value
-                self.owner_element = value
+                self.owner_element.text = value
 
             @property
             def selected_game(self):
@@ -282,14 +284,23 @@ class Menus:
 
             @property
             def player_count(self):
-                return self.lobby_data.player_count
+                return len(self.lobby_data.players)
 
             @player_count.setter
             def player_count(self, value):
-                if value == self.lobby_data.player_count:
+                self.player_count_element.text = str(value)
+
+            @property
+            def players(self):
+                return self.lobby_data.players
+
+            @players.setter
+            def players(self, value):
+                if value == self.lobby_data.players:
                     return
-                self.lobby_data.player_count = value
-                self.player_count_element = value
+                self.lobby_data.players = value
+        #         TODO: Set players element here.
+                self.player_count = len(value)
 
             @property
             def lobby_id(self):
@@ -453,9 +464,9 @@ keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 InitializedMenus.multiplayer_menu.set_lobbies([
-    shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", 5, "Snake"),
-    shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", "10/10", "LOOONG NAMEEEEEE"),
-    shared_assets.LobbyData(2, "Lob", "Name", 5, "Short")
+    shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake"),
+    shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", ["hi", "hi2"], "LOOONG NAMEEEEEE"),
+    shared_assets.LobbyData(2, "Lob", "Name", ["hi", "hi2"], "Short")
 ])
 a, b = time.perf_counter(), True
 
@@ -469,12 +480,10 @@ def on_frame():
     if time.perf_counter() - a > 2 and b:
         b = False
         InitializedMenus.multiplayer_menu.set_lobbies([
-            shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", 5, "Snake"),
-            # shared_assets.LobbyData(6, "no", "no", "10/10", "no"),
-            shared_assets.LobbyData(5, "Lobby 3", "username", "4/5", "bruh"),
-            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name", 5, "Short")
+            shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake"),
+            shared_assets.LobbyData(5, "Lobby 3", "username", ["hi", "hi2"], "bruh"),
+            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name", ["hi", "hi2"], "Short")
         ])
-
 
     mouse_event_handler.main(Menus.menu_active.gui)
     keyboard_event_handler.main(Menus.menu_active.gui)

@@ -23,6 +23,7 @@ Multiplayer menu:
                                       - Make a shared asset with all games + their pictures & all that
     - Join button (greyed out when lobby not selected)
     - Refresh button (or do you just want to live refresh?) (could also do both) (also have to refresh lobby name, etc.)
+        - When a change is made/saved, send it to the server. When the server receives a change, send it to all clients
     - Create lobby button
 
 Create lobby button:
