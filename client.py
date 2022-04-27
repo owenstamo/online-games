@@ -172,24 +172,23 @@ class Menus:
             LOBBY_LIST_ELEMENT_MOUSE_HOLDING_COLOR = (200,) * 3
             LOBBY_LIST_ELEMENT_SELECTED_COLOR = (220,) * 3
 
-            def __init__(self, lobby_data: shared_assets.LobbyData):
+            def __init__(self, lobby_data: shared_assets.LobbyData, parent_menu):
                 def on_mouse_over(element):
-                    if InitializedMenus.multiplayer_menu.selected_lobby is not self:
+                    if self.parent_menu.selected_lobby is not self:
                         if not any(element.mouse_buttons_holding):
                             self.list_gui_element.col = self.LOBBY_LIST_ELEMENT_MOUSE_OVER_COLOR
 
                 def on_mouse_not_over(element):
-                    if InitializedMenus.multiplayer_menu.selected_lobby is not self:
+                    if self.parent_menu.selected_lobby is not self:
                         if not any(element.mouse_buttons_holding):
                             self.list_gui_element.col = self.LOBBY_LIST_ELEMENT_DEFAULT_COLOR
 
                 def on_mouse_down(element, *_):
-                    # if InitializedMenus.multiplayer_menu.selected_lobby is not self:
                     self.list_gui_element.col = self.LOBBY_LIST_ELEMENT_MOUSE_HOLDING_COLOR
 
                 def on_mouse_up(element, *_):
                     if element.mouse_is_over:
-                        InitializedMenus.multiplayer_menu.selected_lobby = self
+                        self.parent_menu.selected_lobby = self
                     else:
                         element.col = self.LOBBY_LIST_ELEMENT_DEFAULT_COLOR
 
@@ -224,6 +223,8 @@ class Menus:
                     owner := Gui.Text(self.owner, text_align=["RIGHT", "CENTER"],
                                       on_draw_before=before_draw_funcs[3])
                 ])
+
+                self.parent_menu = parent_menu
 
                 self.text_container, self.game_image = container, img
                 self.title_element, self.game_title, self.owner_element, self.player_count_element = \
@@ -300,7 +301,9 @@ class Menus:
             # region Gui Initialization
             def element_on_mouse_up(element, *_):
                 if element is self.back_button:
+                    self.selected_lobby = None
                     Menus.set_active_menu(InitializedMenus.title_screen_menu)
+
             self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
             self.server_list_background = Gui.Rect(col=(255,) * 3)
@@ -336,19 +339,23 @@ class Menus:
                 self._selected_lobby.set_selected(True)
 
         def set_lobbies(self, lobbies: list[shared_assets.LobbyData]):
+
             connected_lobbies_by_id = {lobby.lobby_id: lobby for lobby in self.connected_lobbies}
             incoming_lobbies_by_id = {lobby.lobby_id: lobby for lobby in lobbies}
             if set(connected_lobbies_by_id) != set(incoming_lobbies_by_id):
+
                 for i, lobby in enumerate(self.connected_lobbies):
                     if lobby.lobby_id not in incoming_lobbies_by_id:
-                        self.server_list_background.remove_element(lobby)
+                        self.server_list_background.remove_element(lobby.list_gui_element)
                         self.resize_server_list_elements()
 
+                        if lobby is self.selected_lobby:
+                            self.selected_lobby = None
                         del self.connected_lobbies[i]
 
                 for i, lobby in enumerate(lobbies):
-                    if lobby.lobby_id not in self.connected_lobbies:
-                        self.connected_lobbies.append(new_lobby := Menus.MultiplayerMenu.ConnectedLobby(lobby))
+                    if lobby.lobby_id not in connected_lobbies_by_id:
+                        self.connected_lobbies.append(new_lobby := Menus.MultiplayerMenu.ConnectedLobby(lobby, self))
                         self.server_list_background.add_element(new_lobby.list_gui_element)
                         self.resize_server_list_elements()
 
@@ -356,6 +363,8 @@ class Menus:
                 if lobby_id in connected_lobbies_by_id:
                     corresponding_lobby = connected_lobbies_by_id[lobby_id]
                     corresponding_lobby.lobby_data = lobby
+
+            self.resize_server_list_elements()
 
         def resize_server_list_elements(self):
             if len(self.connected_lobbies) == 0:
@@ -445,11 +454,10 @@ mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 InitializedMenus.multiplayer_menu.set_lobbies([
     shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", 5, "Snake"),
-    shared_assets.LobbyData(2, "Lob", "Name", 5, "Short"),
-    shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", "10/10", "LOOONG NAMEEEEEE")
+    shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", "10/10", "LOOONG NAMEEEEEE"),
+    shared_assets.LobbyData(2, "Lob", "Name", 5, "Short")
 ])
-
-a = time.perf_counter()
+a, b = time.perf_counter(), True
 
 def on_frame():
     canvas.fill(Colors.light_gray)
@@ -457,13 +465,16 @@ def on_frame():
     if Menus.menu_active:
         Menus.menu_active.gui.draw(canvas)
 
-    if time.perf_counter() - a > 3:
+    global b
+    if time.perf_counter() - a > 2 and b:
+        b = False
         InitializedMenus.multiplayer_menu.set_lobbies([
             shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", 5, "Snake"),
-            shared_assets.LobbyData(6, "no", "no", "10/10", "no"),
+            # shared_assets.LobbyData(6, "no", "no", "10/10", "no"),
             shared_assets.LobbyData(5, "Lobby 3", "username", "4/5", "bruh"),
-            shared_assets.LobbyData(2, "Lob", "Name", 5, "Short")
+            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name", 5, "Short")
         ])
+
 
     mouse_event_handler.main(Menus.menu_active.gui)
     keyboard_event_handler.main(Menus.menu_active.gui)

@@ -223,7 +223,8 @@ class Gui:
             self._contents += elements
             self.reevaluate_bounding_box()
 
-        def remove_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]]):
+        def remove_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]],
+                           raise_error_if_not_found: bool = False):
             if isinstance(elements, Sequence):
                 for element in elements:
                     if not isinstance(element, Gui.GuiElement):
@@ -231,10 +232,18 @@ class Gui:
             elif isinstance(elements, Gui.GuiElement):
                 elements = [elements]
             else:
-                raise TypeError("Element to add must be list, child of GuiElement, or ElementGroup")
+                raise TypeError("Element to remove must be list, child of GuiElement, or ElementGroup")
 
-            for element in elements:
-                # get indexof element in contents, remove it, reevaluate bounding box. raise error if in contents
+            if raise_error_if_not_found:
+                for element in elements:
+                    if element not in self._contents:
+                        raise ValueError("Element(s) to remove not found in contents.")
+
+            for i, element in enumerate(self._contents):
+                if element in elements:
+                    del self._contents[i]
+
+            self.reevaluate_bounding_box()
 
         def reevaluate_bounding_box(self):
             """
