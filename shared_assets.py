@@ -24,3 +24,17 @@ class Lobby:
 
     def add_player(self, player):
         self.players += [player]
+
+class Message:
+    ...
+
+class MessageTypes:
+    multiplayer_menu_lobby = "multiplayer_menu_lobby"
+
+class LobbyData:
+    def __init__(self, lobby_id, name, owner, player_count=0, selected_game=None):
+        self.lobby_id = lobby_id
+        self.name = name
+        self.owner = owner
+        self.player_count = player_count
+        self.selected_game = selected_game

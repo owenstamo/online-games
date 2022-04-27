@@ -80,7 +80,7 @@ class Gui:
         def __init__(self, pos: ImmutableVert,
                      on_draw_before: Union[Sequence[Callable], Callable, None] = None,
                      on_draw_after: Union[Sequence[Callable], Callable, None] = None,
-                     ignore_bounding_box: bool = False, **_):
+                     ignore_bounding_box: bool = False, ignored_by_mouse: bool = False, **_):
             """
             A base gui element to provides basic framework to child classes.
 
@@ -97,6 +97,7 @@ class Gui:
             self.parent: Union[Gui.ContainerElement, None] = None
             self.bounding_box: Union[Gui.BoundingBox, None] = None
             self._ignore_bounding_box: bool = ignore_bounding_box
+            self.ignored_by_mouse: bool = ignored_by_mouse
 
         def draw(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
             if self.active or force_draw:
@@ -112,7 +113,7 @@ class Gui:
             pass
 
         def mouse_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0), force_check: bool = False):
-            if self.active or force_check:
+            if (self.active or force_check) and not self.ignored_by_mouse:
                 return self.mouse_over_element(mouse_pos - parent_absolute_pos)
             return False
 
@@ -222,6 +223,19 @@ class Gui:
             self._contents += elements
             self.reevaluate_bounding_box()
 
+        def remove_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]]):
+            if isinstance(elements, Sequence):
+                for element in elements:
+                    if not isinstance(element, Gui.GuiElement):
+                        raise TypeError("List must only contain children of GuiElement, or ElementGroup")
+            elif isinstance(elements, Gui.GuiElement):
+                elements = [elements]
+            else:
+                raise TypeError("Element to add must be list, child of GuiElement, or ElementGroup")
+
+            for element in elements:
+                # get indexof element in contents, remove it, reevaluate bounding box. raise error if in contents
+
         def reevaluate_bounding_box(self):
             """
             Sets this element's bounding box. Should be called whenever this element's size or draw position relative to it's stored position changes.
@@ -232,7 +246,7 @@ class Gui:
             ignoring_children = self.bounding_box_ignoring_children
             bounding_boxes = [ignoring_children] if ignoring_children and not self.ignore_bounding_box else []
             for element in self._contents:
-                if element.bounding_box:  # and not element.ignore_bounding_box:  #Ignore child boxes of element as well
+                if element.bounding_box:  # and not element.ignore_bounding_box:  # Uncomment to ignore child boxes of element as well
                     bounding_boxes.append(element.bounding_box + element.pos)
 
             no_bounding_box = True
@@ -256,7 +270,7 @@ class Gui:
             if self.active:
                 for element in reversed(self._contents):
                     if isinstance(element, Gui.ContainerElement):
-                        if element_over := element.get_element_over(mouse_pos):
+                        if element_over := element.get_element_over(mouse_pos, parent_absolute_pos + self._pos):
                             return element_over
                     if element.mouse_over(mouse_pos, self._pos + parent_absolute_pos):
                         return element
@@ -286,7 +300,7 @@ class Gui:
         """
         A container element that has a custom bounding box. Acts basically like a Rect, but without drawing or mouse interaction.
         """
-        def __init__(self, pos: Vert, size: Vert, **kwargs):
+        def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), **kwargs):
             self._size: Vert = size
             super().__init__(pos, **kwargs)
 
@@ -980,7 +994,7 @@ class GuiMouseEventHandler(MouseEventHandler):
         self.mouse_pos = Vert(pygame.mouse.get_pos())
 
         for active_gui in reversed(self.guis):
-            self.element_over = active_gui.get_element_over(self.mouse_pos)
+            self.element_over = active_gui.get_element_over(self.mouse_pos, active_gui.pos)
             if self.element_over is not None:
                 break
 
