@@ -1,3 +1,4 @@
+from typing import Union
 
 port = 5555
 
@@ -32,10 +33,15 @@ class MessageTypes:
     multiplayer_menu_lobby = "multiplayer_menu_lobby"
 
 class LobbyData:
-    def __init__(self, lobby_id, name: str, owner: str, players: list[str], selected_game=None):
+    def __init__(self, lobby_id: int,
+                 lobby_title: Union[str, None] = None,
+                 owner: Union[str, None] = None,
+                 players: Union[list[str], None] = None,
+                 game_title=None,
+                 max_players: Union[int, None] = None):
         self.lobby_id = lobby_id
-        self.name = name
+        self.lobby_title = lobby_title
         self.owner = owner
-        self.selected_game = selected_game
+        self.game_title = game_title
         self.players = players
-        # self.max_players = max_players
+        self.max_players = max_players

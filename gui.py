@@ -189,7 +189,7 @@ class Gui:
                 self.parent.reevaluate_bounding_box()
 
     class ContainerElement(GuiElement):
-        def __init__(self, pos: ImmutableVert,
+        def __init__(self, pos: ImmutableVert = Vert(0, 0),
                      contents: Union[Gui.GuiElement, Sequence[Gui.GuiElement], None]
                      = None, active: bool = True, **kwargs):
             """
@@ -528,7 +528,7 @@ class Gui:
     class Text(GuiElement):
         HEIGHT_ADJUSTMENT = Vert(0, 0.05)
 
-        def __init__(self, text: str, pos: ImmutableVert = ImmutableVert(0, 0), font_size: int = 0,
+        def __init__(self, text: str = "", pos: ImmutableVert = ImmutableVert(0, 0), font_size: int = 0,
                      font: str = "calibri", col: Tuple[int, int, int] = (0, 0, 0),
                      text_align: Sequence[str, str] = ("CENTER", "CENTER"),
                      antialias: bool = True, ignore_bounding_box=True, adjust_height=True, **kwargs):

@@ -16,9 +16,6 @@ pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
 
-# TODO: Do I want to make each individual menu its own class, and inherit from one main Menu class?
-# Make a class that contains all the other classes + any extra vars
-
 class Menus:
     class Menu(ABC):
         button_default_color = (210,) * 3
@@ -192,8 +189,6 @@ class Menus:
                     else:
                         element.col = self.LOBBY_LIST_ELEMENT_DEFAULT_COLOR
 
-                self._lobby_data = lobby_data
-
                 self.list_gui_element = Gui.Rect(col=self.LOBBY_LIST_ELEMENT_DEFAULT_COLOR,
                                                  on_mouse_down=on_mouse_down,
                                                  on_mouse_up=on_mouse_up,
@@ -214,22 +209,25 @@ class Menus:
                 ])
 
                 container.add_element([
-                    title := Gui.Text(self.name, text_align=["LEFT", "CENTER"],
+                    title := Gui.Text(text_align=["LEFT", "CENTER"],
                                       on_draw_before=before_draw_funcs[0]),
-                    game_title := Gui.Text(self.selected_game, text_align=["LEFT", "CENTER"],
+                    game_title := Gui.Text(text_align=["LEFT", "CENTER"],
                                            on_draw_before=before_draw_funcs[1]),
-                    count := Gui.Text(str(self.player_count), text_align=["RIGHT", "CENTER"],
+                    count := Gui.Text(text_align=["RIGHT", "CENTER"],
                                       on_draw_before=before_draw_funcs[2]),
-                    owner := Gui.Text(self.owner, text_align=["RIGHT", "CENTER"],
+                    owner := Gui.Text(text_align=["RIGHT", "CENTER"],
                                       on_draw_before=before_draw_funcs[3])
                 ])
 
                 self.parent_menu = parent_menu
 
                 self.text_container, self.game_image = container, img
-                self.title_element, self.game_title, self.owner_element, self.player_count_element = \
+                self.title_element, self.game_title_element, self.owner_element, self.player_count_element = \
                     title, game_title, owner, count
                 self.info_gui_element = Gui.BoundingContainer()
+
+                self._lobby_data: shared_assets.LobbyData = shared_assets.LobbyData(lobby_data.lobby_id)
+                self.lobby_data = lobby_data
 
             def set_selected(self, selected: bool):
                 if selected:
@@ -243,68 +241,83 @@ class Menus:
 
             @lobby_data.setter
             def lobby_data(self, value):
-                if value.lobby_id != self.lobby_id:
+                if value.lobby_id != self.lobby_id and self.lobby_id is not None:
                     raise ValueError("Tried to set lobby to another without a matching ID")
-                self.name = value.name
+                self.lobby_title = value.lobby_title
                 self.owner = value.owner
-                self.selected_game = value.selected_game
+                self.game_title = value.game_title
                 self.players = value.players
+                self.max_players = value.max_players
 
             @property
-            def name(self):
-                return self.lobby_data.name
+            def lobby_title(self):
+                return self._lobby_data.lobby_title
 
-            @name.setter
-            def name(self, value):
-                if value == self.lobby_data.name:
+            @lobby_title.setter
+            def lobby_title(self, value):
+                if value == self._lobby_data.lobby_title:
                     return
-                self.lobby_data.name = value
+                self._lobby_data.lobby_title = value
                 self.title_element.text = value
 
             @property
             def owner(self):
-                return self.lobby_data.owner
+                return self._lobby_data.owner
 
             @owner.setter
             def owner(self, value):
-                if value == self.lobby_data.owner:
+                if value == self._lobby_data.owner:
                     return
-                self.lobby_data.owner = value
+                self._lobby_data.owner = value
                 self.owner_element.text = value
 
             @property
-            def selected_game(self):
-                return self.lobby_data.selected_game
+            def game_title(self):
+                return self._lobby_data.game_title
 
-            @selected_game.setter
-            def selected_game(self, value):
-                if value == self.lobby_data.selected_game:
+            @game_title.setter
+            def game_title(self, value):
+                if value == self._lobby_data.game_title:
                     return
-                self.lobby_data.selected_game = value
+                self._lobby_data.game_title = value
+                self.game_title_element.text = value
 
             @property
             def player_count(self):
-                return len(self.lobby_data.players)
+                return len(self._lobby_data.players)
 
             @player_count.setter
             def player_count(self, value):
-                self.player_count_element.text = str(value)
+                self.player_count_element.text = f"{value}/{self.max_players}" if self.max_players is not None else \
+                    f"{value}"
 
             @property
             def players(self):
-                return self.lobby_data.players
+                return self._lobby_data.players
 
             @players.setter
             def players(self, value):
-                if value == self.lobby_data.players:
+                if value == self._lobby_data.players:
                     return
-                self.lobby_data.players = value
+                self._lobby_data.players = value
         #         TODO: Set players element here.
                 self.player_count = len(value)
 
             @property
+            def max_players(self):
+                return self._lobby_data.max_players
+
+            @max_players.setter
+            def max_players(self, value):
+                if value == self._lobby_data.max_players:
+                    return
+                self._lobby_data.max_players = value
+                self.player_count_element.text = f"{self.player_count}/{value}" \
+                    if self.max_players is not None else f"{self.player_count}"
+
+            @property
             def lobby_id(self):
-                return self.lobby_data.lobby_id
+                return self._lobby_data.lobby_id
 
         def __init__(self):
             super().__init__()
@@ -317,7 +330,7 @@ class Menus:
 
             self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
-            self.server_list_background = Gui.Rect(col=(255,) * 3)
+            self.lobby_list_background = Gui.Rect(col=(255,) * 3)
 
             self.back_button = Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
             self.back_button.add_element(Gui.Text("Back", **self.new_text_parameters))
@@ -329,11 +342,56 @@ class Menus:
                 self.button_list.append(new_button := Gui.Rect(col=self.button_default_color, **self.element_mouse_functions))
                 new_button.add_element(Gui.Text(title, **self.new_text_parameters))
 
-            self.gui.add_element([self.server_list_background, self.back_button, self.lobby_info] + self.button_list)
+            self.gui.add_element([self.lobby_list_background, self.back_button, self.lobby_info] + self.button_list)
+            # endregion
+
+            # region Lobby info contents initialization
+            self.game_image = Gui.Rect(col=(220,) * 3)
+
+            # A thin wrapper just inside lobby_info that lets the user easily disable the contents of lobby_info
+            self.lobby_info_inside_wrapper = Gui.ContainerElement(active=False)
+
+            self.player_list_container = Gui.BoundingContainer()
+            self.player_list_visual_container = Gui.Rect()
+            self.player_list_title = Gui.Text()
+
+            self.game_info_container = Gui.BoundingContainer()
+            before_draw_funcs = [
+                get_auto_center_function(align=["LEFT", "CENTER"], offset_scaled_by_parent_height=Vert(0.05, -0.25)),
+                get_auto_center_function(align=["LEFT", "CENTER"], offset_scaled_by_parent_height=Vert(0.05, 0.08)),
+                get_auto_center_function(align=["LEFT", "CENTER"], offset_scaled_by_parent_height=Vert(0.05, 0.33))
+            ]
+            self.game_info_container.add_element([
+                title := Gui.Text(text_align=["LEFT", "CENTER"],
+                                  on_draw_before=before_draw_funcs[0]),
+                game_title := Gui.Text(text_align=["LEFT", "CENTER"],
+                                       on_draw_before=before_draw_funcs[1]),
+                owner := Gui.Text(text_align=["LEFT", "CENTER"],
+                                  on_draw_before=before_draw_funcs[2])
+            ])
+
+            self.lobby_title, self.game_title, self.owner = title, game_title, owner
+
+            self.lobby_info_inside_wrapper.add_element([
+                self.game_image,
+                self.player_list_visual_container,
+                self.player_list_container,
+                self.game_info_container,
+                self.player_list_title
+            ])
+            self.lobby_info.add_element(self.lobby_info_inside_wrapper)
             # endregion
 
             self.connected_lobbies: list[Menus.MultiplayerMenu.ConnectedLobby] = []
             self._selected_lobby: Union[Menus.MultiplayerMenu.ConnectedLobby, None] = None
+
+        def set_lobby_info(self, lobby: ConnectedLobby):
+            self.lobby_title.text = lobby.lobby_title
+            self.owner.text = f"Owner: {lobby.owner}"
+            self.game_title.text = f"Game: {lobby.game_title}"
+            self.player_list_title.text = f"Players: " + (f"{lobby.player_count}/{lobby.max_players}" if
+                                                          lobby.max_players is not None else f"{lobby.player_count}")
+            self.resize_lobby_info_elements()
 
         @property
         def selected_lobby(self):
@@ -347,18 +405,22 @@ class Menus:
             self._selected_lobby = value
 
             if self._selected_lobby:
+                self.lobby_info_inside_wrapper.active = True
+                self.set_lobby_info(self._selected_lobby)
                 self._selected_lobby.set_selected(True)
+            else:
+                self.lobby_info_inside_wrapper.active = False
 
         def set_lobbies(self, lobbies: list[shared_assets.LobbyData]):
-
             connected_lobbies_by_id = {lobby.lobby_id: lobby for lobby in self.connected_lobbies}
             incoming_lobbies_by_id = {lobby.lobby_id: lobby for lobby in lobbies}
+
             if set(connected_lobbies_by_id) != set(incoming_lobbies_by_id):
 
                 for i, lobby in enumerate(self.connected_lobbies):
                     if lobby.lobby_id not in incoming_lobbies_by_id:
-                        self.server_list_background.remove_element(lobby.list_gui_element)
-                        self.resize_server_list_elements()
+                        self.lobby_list_background.remove_element(lobby.list_gui_element)
+                        self.resize_lobby_list_elements()
 
                         if lobby is self.selected_lobby:
                             self.selected_lobby = None
@@ -367,26 +429,28 @@ class Menus:
                 for i, lobby in enumerate(lobbies):
                     if lobby.lobby_id not in connected_lobbies_by_id:
                         self.connected_lobbies.append(new_lobby := Menus.MultiplayerMenu.ConnectedLobby(lobby, self))
-                        self.server_list_background.add_element(new_lobby.list_gui_element)
-                        self.resize_server_list_elements()
+                        self.lobby_list_background.add_element(new_lobby.list_gui_element)
 
             for lobby_id, lobby in incoming_lobbies_by_id.items():
                 if lobby_id in connected_lobbies_by_id:
                     corresponding_lobby = connected_lobbies_by_id[lobby_id]
                     corresponding_lobby.lobby_data = lobby
 
-            self.resize_server_list_elements()
+            if self._selected_lobby:
+                self.set_lobby_info(self._selected_lobby)
 
-        def resize_server_list_elements(self):
+            self.resize_lobby_list_elements()
+
+        def resize_lobby_list_elements(self):
             if len(self.connected_lobbies) == 0:
                 return
-            element_height = min(self.server_list_background.size.y / len(self.connected_lobbies),
-                                 self.server_list_background.size.x * 0.2)
+            element_height = min(self.lobby_list_background.size.y / len(self.connected_lobbies),
+                                 self.lobby_list_background.size.x * 0.2)
             for i, lobby in enumerate(self.connected_lobbies):
                 lobby.list_gui_element.pos = Vert(0, i * element_height)
                 tall_element_height = element_height + (2 if i != len(self.connected_lobbies) - 1 else 1)
                 # Use tall_element_height so that there is no accidental space between elements
-                lobby.list_gui_element.size = Vert(self.server_list_background.size.x, tall_element_height)
+                lobby.list_gui_element.size = Vert(self.lobby_list_background.size.x, tall_element_height)
 
                 lobby.game_image.size = Vert(element_height, tall_element_height)
 
@@ -398,15 +462,46 @@ class Menus:
                 lobby.title_element.font_size = \
                     min(lobby.text_container.size.x * 0.75 / lobby.title_element.size_per_font_size.x,
                         lobby.text_container.size.y * 0.5 / lobby.title_element.size_per_font_size.y)
-                lobby.game_title.font_size = \
-                    min(lobby.text_container.size.x * 0.45 / lobby.game_title.size_per_font_size.x,
-                        lobby.text_container.size.y * 0.3 / lobby.game_title.size_per_font_size.y)
+                lobby.game_title_element.font_size = \
+                    min(lobby.text_container.size.x * 0.45 / lobby.game_title_element.size_per_font_size.x,
+                        lobby.text_container.size.y * 0.3 / lobby.game_title_element.size_per_font_size.y)
                 lobby.owner_element.font_size = \
                     min(lobby.text_container.size.x * 0.45 / lobby.owner_element.size_per_font_size.x,
                         lobby.text_container.size.y * 0.3 / lobby.owner_element.size_per_font_size.y)
                 lobby.player_count_element.font_size = \
                     min(lobby.text_container.size.x * 0.2 / lobby.player_count_element.size_per_font_size.x,
                         lobby.text_container.size.y * 0.45 / lobby.player_count_element.size_per_font_size.y)
+
+        def resize_lobby_info_elements(self):
+            if not self.owner.text or \
+               not self.game_title.text or \
+               not self.lobby_title.text or \
+               not self.player_list_title.text:
+                return
+            self.game_image.size = Vert(1, 1) * min(self.lobby_info.size.x / 2, self.lobby_info.size.y / 2)
+
+            self.game_info_container.size = Vert(self.lobby_info.size.x - self.game_image.size.x,
+                                                 self.game_image.size.y)
+            self.game_info_container.pos = Vert(self.game_image.size.x, 0)
+
+            self.player_list_title.font_size = min(self.lobby_info.size.y / 10, self.lobby_info.size.x / 8)
+
+            self.player_list_visual_container.pos = Vert(0, self.game_image.size.y - 2)
+            self.player_list_visual_container.size = Vert(self.lobby_info.size.x,
+                                                          self.lobby_info.size.y - self.player_list_visual_container.pos.y + 1)
+
+            self.player_list_container.pos = Vert(0, self.game_image.size.y + self.player_list_title.font_size * 1.2)
+            self.player_list_container.size = Vert(self.lobby_info.size.x,
+                                                   self.lobby_info.size.y - self.player_list_container.pos.y)
+            self.player_list_title.pos = Vert(self.lobby_info.size.x / 2,
+                                              (self.player_list_visual_container.pos.y + self.player_list_container.pos.y) / 2)
+
+            self.lobby_title.font_size = min(self.game_info_container.size.y / 2.5,
+                                             self.game_info_container.size.x / self.lobby_title.size_per_font_size.x * 0.9)
+            self.game_title.font_size = min(self.game_info_container.size.y / 4,
+                                            self.game_info_container.size.x / self.game_title.size_per_font_size.x * 0.9)
+            self.owner.font_size = min(self.game_info_container.size.y / 4,
+                                       self.game_info_container.size.x / self.owner.size_per_font_size.x * 0.9)
 
         def resize_elements(self):
             canvas_size = Vert(canvas.get_size())
@@ -437,12 +532,13 @@ class Menus:
                 else:
                     button.pos = button_list_pos + Vert(0, i * (button.size.y + button_list_padding))
 
-            self.server_list_background.pos = Vert(padding.x,
+            self.lobby_list_background.pos = Vert(padding.x,
                                                    self.back_button.pos.y + self.back_button.size.y + padding.y)
-            self.server_list_background.size = Vert(canvas_size.x / 2 - padding.x * 1.5,
-                                                    canvas_size.y - self.server_list_background.pos.y - padding.y)
+            self.lobby_list_background.size = Vert(canvas_size.x / 2 - padding.x * 1.5,
+                                                    canvas_size.y - self.lobby_list_background.pos.y - padding.y)
 
-            self.resize_server_list_elements()
+            self.resize_lobby_list_elements()
+            self.resize_lobby_info_elements()
 
     @classmethod
     def set_active_menu(cls, value):
@@ -464,9 +560,9 @@ keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 InitializedMenus.multiplayer_menu.set_lobbies([
-    shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake"),
-    shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", ["hi", "hi2"], "LOOONG NAMEEEEEE"),
-    shared_assets.LobbyData(2, "Lob", "Name", ["hi", "hi2"], "Short")
+    shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake", None),
+    shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", ["hi", "hi2"], "LOOONG NAMEEEEEE", 5),
+    shared_assets.LobbyData(2, "Lob", "Name", ["hi", "hi2"], "Short", 6)
 ])
 a, b = time.perf_counter(), True
 
@@ -480,9 +576,9 @@ def on_frame():
     if time.perf_counter() - a > 2 and b:
         b = False
         InitializedMenus.multiplayer_menu.set_lobbies([
-            shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake"),
-            shared_assets.LobbyData(5, "Lobby 3", "username", ["hi", "hi2"], "bruh"),
-            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name", ["hi", "hi2"], "Short")
+            shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake", 2),
+            shared_assets.LobbyData(5, "Lobby 3", "username", ["hi", "hi2"], "bruh", 7),
+            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name", ["hi", "hi2"], "Short", 8)
         ])
 
     mouse_event_handler.main(Menus.menu_active.gui)

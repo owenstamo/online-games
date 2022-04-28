@@ -1,6 +1,6 @@
 import socket
-import _thread
-import pickle
+# import _thread
+# import pickle
 import shared_assets
 
 class Server:
