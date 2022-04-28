@@ -354,6 +354,7 @@ class Menus:
             self.player_list_container = Gui.BoundingContainer()
             self.player_list_visual_container = Gui.Rect()
             self.player_list_title = Gui.Text()
+            self.player_list: list[list[Gui.Text], list[Gui.Text]] = [[], []]
 
             self.game_info_container = Gui.BoundingContainer()
             before_draw_funcs = [
@@ -391,6 +392,13 @@ class Menus:
             self.game_title.text = f"Game: {lobby.game_title}"
             self.player_list_title.text = f"Players: " + (f"{lobby.player_count}/{lobby.max_players}" if
                                                           lobby.max_players is not None else f"{lobby.player_count}")
+
+            self.player_list = [[], []]
+            for i, username in enumerate(lobby.players):
+                self.player_list[i % 2].append((Gui.Text(username, text_align=["LEFT", "CENTER"]),
+                                                Gui.Circle(no_fill=True)))
+            self.player_list_container.contents = sum(self.player_list[0] + self.player_list[1], start=())
+
             self.resize_lobby_info_elements()
 
         @property
@@ -473,18 +481,14 @@ class Menus:
                         lobby.text_container.size.y * 0.45 / lobby.player_count_element.size_per_font_size.y)
 
         def resize_lobby_info_elements(self):
-            if not self.owner.text or \
-               not self.game_title.text or \
-               not self.lobby_title.text or \
-               not self.player_list_title.text:
-                return
             self.game_image.size = Vert(1, 1) * min(self.lobby_info.size.x / 2, self.lobby_info.size.y / 2)
 
             self.game_info_container.size = Vert(self.lobby_info.size.x - self.game_image.size.x,
                                                  self.game_image.size.y)
             self.game_info_container.pos = Vert(self.game_image.size.x, 0)
 
-            self.player_list_title.font_size = min(self.lobby_info.size.y / 10, self.lobby_info.size.x / 8)
+            if self.player_list_title.text:
+                self.player_list_title.font_size = min(self.lobby_info.size.y / 10, self.lobby_info.size.x / 8)
 
             self.player_list_visual_container.pos = Vert(0, self.game_image.size.y - 2)
             self.player_list_visual_container.size = Vert(self.lobby_info.size.x,
@@ -496,12 +500,32 @@ class Menus:
             self.player_list_title.pos = Vert(self.lobby_info.size.x / 2,
                                               (self.player_list_visual_container.pos.y + self.player_list_container.pos.y) / 2)
 
-            self.lobby_title.font_size = min(self.game_info_container.size.y / 2.5,
-                                             self.game_info_container.size.x / self.lobby_title.size_per_font_size.x * 0.9)
-            self.game_title.font_size = min(self.game_info_container.size.y / 4,
-                                            self.game_info_container.size.x / self.game_title.size_per_font_size.x * 0.9)
-            self.owner.font_size = min(self.game_info_container.size.y / 4,
-                                       self.game_info_container.size.x / self.owner.size_per_font_size.x * 0.9)
+            if self.lobby_title.text:
+                self.lobby_title.font_size = min(self.game_info_container.size.y / 2.5,
+                                                 self.game_info_container.size.x / self.lobby_title.size_per_font_size.x * 0.9)
+            if self.game_title.text:
+                self.game_title.font_size = min(self.game_info_container.size.y / 4,
+                                                self.game_info_container.size.x / self.game_title.size_per_font_size.x * 0.9)
+            if self.owner.text:
+                self.owner.font_size = min(self.game_info_container.size.y / 4,
+                                           self.game_info_container.size.x / self.owner.size_per_font_size.x * 0.9)
+
+            height = len(self.player_list[0])
+            vertical_padding = self.player_list_container.size.y / 20
+            left_padding = self.player_list_container.size.x / 12
+            spacing = (self.player_list_container.size.y - vertical_padding * 2) / max(height, 3)
+            max_font_size = spacing
+            for column_num in [0, 1]:
+                for i, element in enumerate(self.player_list[column_num]):
+                    text, circle = element
+                    font_size = min(max_font_size,
+                                    (self.player_list_container.size.x * 0.45 - left_padding) / text.size_per_font_size.x)
+                    text.font_size = font_size
+                    text.pos = Vert(left_padding + column_num * self.player_list_container.size.x / 2,
+                                    (0.5 + i) * spacing + vertical_padding)
+
+                    circle.pos = text.pos - Vert(left_padding / 2, 0)
+                    circle.rad = min(max_font_size * 0.2, left_padding / 3)
 
         def resize_elements(self):
             canvas_size = Vert(canvas.get_size())
@@ -560,9 +584,9 @@ keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 InitializedMenus.multiplayer_menu.set_lobbies([
-    shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake", None),
+    shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2, hi3"], "Snake", None),
     shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", ["hi", "hi2"], "LOOONG NAMEEEEEE", 5),
-    shared_assets.LobbyData(2, "Lob", "Name", ["hi", "hi2"], "Short", 6)
+    shared_assets.LobbyData(2, "Lob", "Name", ["username1", "username2", "username3"], "Short", 6)
 ])
 a, b = time.perf_counter(), True
 
@@ -576,9 +600,10 @@ def on_frame():
     if time.perf_counter() - a > 2 and b:
         b = False
         InitializedMenus.multiplayer_menu.set_lobbies([
-            shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2"], "Snake", 2),
-            shared_assets.LobbyData(5, "Lobby 3", "username", ["hi", "hi2"], "bruh", 7),
-            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name", ["hi", "hi2"], "Short", 8)
+            shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2", "hi3"], "Snake", 2),
+            shared_assets.LobbyData(5, "Lobby 3", "username", ["InsertUniqueName", "hi2"], "bruh", 7),
+            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name",
+                                    ["Username1", "Username2", "username3", "username4", "username5", "username6", "username7"], "Short", 8)
         ])
 
     mouse_event_handler.main(Menus.menu_active.gui)
