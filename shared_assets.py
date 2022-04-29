@@ -26,22 +26,55 @@ class Lobby:
     def add_player(self, player):
         self.players += [player]
 
-class Message:
-    ...
-
-class MessageTypes:
-    multiplayer_menu_lobby = "multiplayer_menu_lobby"
-
 class LobbyData:
     def __init__(self, lobby_id: int,
                  lobby_title: Union[str, None] = None,
                  owner: Union[str, None] = None,
                  players: Union[list[str], None] = None,
-                 game_title=None,
+                 game_id=None,
                  max_players: Union[int, None] = None):
         self.lobby_id = lobby_id
         self.lobby_title = lobby_title
         self.owner = owner
-        self.game_title = game_title
+        self.game_id = game_id
         self.players = players
         self.max_players = max_players
+
+class Messages:
+    class Message:
+        style = "message"
+        type = "default"
+
+    class Request:
+        style = "request"
+
+    # region Multiplayer menu related messages
+    class LobbyListRequest(Request):
+        type = "lobby_list_data_request"
+
+    class LobbyListMessage(Message):
+        type = "lobby_list_data"
+
+        def __init__(self, lobbies: list[LobbyData]):
+            self.lobbies = lobbies
+    # endregion
+
+class MessageTypes:
+    multiplayer_menu_lobby = "multiplayer_menu_lobby"
+
+class GameInfo:
+    def __init__(self, title, image):
+        self.title = title
+        self.image = image
+
+class GameIds:
+    snake = "snake"
+    pong = "pong"
+
+
+game_info = {
+    GameIds.snake: GameInfo("Snake", "*insert_image_here*"),
+    GameIds.pong: GameInfo("Pong", "*insert_image_here*")
+}
+
+

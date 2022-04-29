@@ -1,5 +1,6 @@
 import socket
 import shared_assets
+import pickle
 
 class Network:
     def __init__(self):
@@ -23,8 +24,12 @@ class Network:
                 # When this happens
         print("Connected!")
 
-    def send(self):
-        ...
+    def send(self, message):
+        outgoing_message = pickle.dumps(message)
+        # print(len(outgoing_message))
+        self.client.send(outgoing_message)
 
     def recv(self):
-        ...
+        incoming_message = self.client.recv(4096)
+        return pickle.loads(incoming_message)
+

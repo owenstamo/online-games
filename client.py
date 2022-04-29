@@ -1,20 +1,27 @@
 import time
-
 import pygame
-import shared_assets
+from shared_assets import LobbyData, game_info, Messages
 from abc import ABC, abstractmethod
 from typing import Union
 import copy
 from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboardEventHandler
-# from network import Network
-# import assets
+from network import Network
 from utilities import Colors, Vert
+import _thread
 
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
 pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
+
+def message_listener():
+    while True:
+        message = network.recv()
+        print(f"Received {message.style} of type {message.type} from server.")
+
+        if message.type == Messages.LobbyListMessage.type:
+            InitializedMenus.multiplayer_menu.set_lobbies(message.lobbies)
 
 class Menus:
     class Menu(ABC):
@@ -169,7 +176,7 @@ class Menus:
             LOBBY_LIST_ELEMENT_MOUSE_HOLDING_COLOR = (200,) * 3
             LOBBY_LIST_ELEMENT_SELECTED_COLOR = (220,) * 3
 
-            def __init__(self, lobby_data: shared_assets.LobbyData, parent_menu):
+            def __init__(self, lobby_data: LobbyData, parent_menu):
                 def on_mouse_over(element):
                     if self.parent_menu.selected_lobby is not self:
                         if not any(element.mouse_buttons_holding):
@@ -226,7 +233,7 @@ class Menus:
                     title, game_title, owner, count
                 self.info_gui_element = Gui.BoundingContainer()
 
-                self._lobby_data: shared_assets.LobbyData = shared_assets.LobbyData(lobby_data.lobby_id)
+                self._lobby_data: LobbyData = LobbyData(lobby_data.lobby_id)
                 self.lobby_data = lobby_data
 
             def set_selected(self, selected: bool):
@@ -245,7 +252,7 @@ class Menus:
                     raise ValueError("Tried to set lobby to another without a matching ID")
                 self.lobby_title = value.lobby_title
                 self.owner = value.owner
-                self.game_title = value.game_title
+                self.game_id = value.game_id
                 self.players = value.players
                 self.max_players = value.max_players
 
@@ -272,15 +279,17 @@ class Menus:
                 self.owner_element.text = value
 
             @property
-            def game_title(self):
-                return self._lobby_data.game_title
+            def game_id(self):
+                return self._lobby_data.game_id
 
-            @game_title.setter
-            def game_title(self, value):
-                if value == self._lobby_data.game_title:
+            @game_id.setter
+            def game_id(self, value):
+                if value == self._lobby_data.game_id:
                     return
-                self._lobby_data.game_title = value
-                self.game_title_element.text = value
+                self._lobby_data.game_id = value
+
+                # TODO: self.game_image = game_info[value.game_id].image
+                self.game_title_element.text = game_info[value].title
 
             @property
             def player_count(self):
@@ -327,6 +336,9 @@ class Menus:
                 if element is self.back_button:
                     self.selected_lobby = None
                     Menus.set_active_menu(InitializedMenus.title_screen_menu)
+                elif element is self.refresh_button:
+                    self.set_lobbies([])
+                    network.send(Messages.LobbyListRequest())
 
             self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
@@ -341,6 +353,7 @@ class Menus:
             for title in ["Join Lobby", "Refresh", "Create Lobby"]:
                 self.button_list.append(new_button := Gui.Rect(col=self.button_default_color, **self.element_mouse_functions))
                 new_button.add_element(Gui.Text(title, **self.new_text_parameters))
+            self.join_lobby_button, self.refresh_button, self.create_lobby_button = self.button_list
 
             self.gui.add_element([self.lobby_list_background, self.back_button, self.lobby_info] + self.button_list)
             # endregion
@@ -355,6 +368,7 @@ class Menus:
             self.player_list_visual_container = Gui.Rect()
             self.player_list_title = Gui.Text()
             self.player_list: list[list[Gui.Text], list[Gui.Text]] = [[], []]
+            self.raw_player_list_displayed: list[str] = []
 
             self.game_info_container = Gui.BoundingContainer()
             before_draw_funcs = [
@@ -385,19 +399,28 @@ class Menus:
 
             self.connected_lobbies: list[Menus.MultiplayerMenu.ConnectedLobby] = []
             self._selected_lobby: Union[Menus.MultiplayerMenu.ConnectedLobby, None] = None
+            self.ping_rate = 5
+
+        @staticmethod
+        def ping_for_updates(this_menu):
+            while Menus.menu_active is this_menu:
+                network.send(Messages.LobbyListRequest())
+                time.sleep(this_menu.ping_rate)
 
         def set_lobby_info(self, lobby: ConnectedLobby):
             self.lobby_title.text = lobby.lobby_title
             self.owner.text = f"Owner: {lobby.owner}"
-            self.game_title.text = f"Game: {lobby.game_title}"
+            self.game_title.text = f"Game: {game_info[lobby.game_id].title}"
             self.player_list_title.text = f"Players: " + (f"{lobby.player_count}/{lobby.max_players}" if
                                                           lobby.max_players is not None else f"{lobby.player_count}")
 
-            self.player_list = [[], []]
-            for i, username in enumerate(lobby.players):
-                self.player_list[i % 2].append((Gui.Text(username, text_align=["LEFT", "CENTER"]),
-                                                Gui.Circle(no_fill=True)))
-            self.player_list_container.contents = sum(self.player_list[0] + self.player_list[1], start=())
+            if self.raw_player_list_displayed != lobby.players:
+                self.raw_player_list_displayed = lobby.players
+                self.player_list = [[], []]
+                for i, username in enumerate(lobby.players):
+                    self.player_list[i % 2].append((Gui.Text(username, text_align=["LEFT", "CENTER"]),
+                                                    Gui.Circle(no_fill=True)))
+                self.player_list_container.contents = sum(self.player_list[0] + self.player_list[1], start=())
 
             self.resize_lobby_info_elements()
 
@@ -419,13 +442,19 @@ class Menus:
             else:
                 self.lobby_info_inside_wrapper.active = False
 
-        def set_lobbies(self, lobbies: list[shared_assets.LobbyData]):
+        def set_lobbies(self, lobbies: list[LobbyData]):
             connected_lobbies_by_id = {lobby.lobby_id: lobby for lobby in self.connected_lobbies}
             incoming_lobbies_by_id = {lobby.lobby_id: lobby for lobby in lobbies}
 
+            print("Started function call")
+
             if set(connected_lobbies_by_id) != set(incoming_lobbies_by_id):
 
-                for i, lobby in enumerate(self.connected_lobbies):
+                print(self.connected_lobbies)
+                temp = copy.copy(self.connected_lobbies)
+                # Glitching because del isn't working with the for loop (or something)
+                # The fix i have here works but I assume is VERY slow.
+                for i, lobby in reversed(list(enumerate(temp))):
                     if lobby.lobby_id not in incoming_lobbies_by_id:
                         self.lobby_list_background.remove_element(lobby.list_gui_element)
                         self.resize_lobby_list_elements()
@@ -448,6 +477,8 @@ class Menus:
                 self.set_lobby_info(self._selected_lobby)
 
             self.resize_lobby_list_elements()
+
+            print(lobbies, self.connected_lobbies, connected_lobbies_by_id, incoming_lobbies_by_id)
 
         def resize_lobby_list_elements(self):
             if len(self.connected_lobbies) == 0:
@@ -511,7 +542,8 @@ class Menus:
                                            self.game_info_container.size.x / self.owner.size_per_font_size.x * 0.9)
 
             height = len(self.player_list[0])
-            vertical_padding = self.player_list_container.size.y / 20
+            # vertical_padding = self.player_list_container.size.y / 20
+            vertical_padding = 0
             left_padding = self.player_list_container.size.x / 12
             spacing = (self.player_list_container.size.y - vertical_padding * 2) / max(height, 3)
             max_font_size = spacing
@@ -567,6 +599,10 @@ class Menus:
     @classmethod
     def set_active_menu(cls, value):
         cls.menu_active = value
+
+        if isinstance(cls.menu_active, Menus.MultiplayerMenu):
+            _thread.start_new_thread(cls.menu_active.ping_for_updates, (cls.menu_active,))
+
         cls.menu_active.resize_elements()
 
     menu_active: Union[Menu, None] = None
@@ -576,35 +612,18 @@ class InitializedMenus:
     options_menu = Menus.OptionsMenu()
     multiplayer_menu = Menus.MultiplayerMenu()
 
-    Menus.set_active_menu(multiplayer_menu)
+    Menus.set_active_menu(title_screen_menu)
 
 
-default_username = ""
+default_username = "DefaultUsername"
 keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
-
-InitializedMenus.multiplayer_menu.set_lobbies([
-    shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2, hi3"], "Snake", None),
-    shared_assets.LobbyData(3, "LOOOONG LOBBYY NAMMEEE 3", "WWWWWWWWWWWWWWWWWW", ["hi", "hi2"], "LOOONG NAMEEEEEE", 5),
-    shared_assets.LobbyData(2, "Lob", "Name", ["username1", "username2", "username3"], "Short", 6)
-])
-a, b = time.perf_counter(), True
 
 def on_frame():
     canvas.fill(Colors.light_gray)
 
     if Menus.menu_active:
         Menus.menu_active.gui.draw(canvas)
-
-    global b
-    if time.perf_counter() - a > 2 and b:
-        b = False
-        InitializedMenus.multiplayer_menu.set_lobbies([
-            shared_assets.LobbyData(1, "Cool Lobby", "UsernameHere", ["hi", "hi2", "hi3"], "Snake", 2),
-            shared_assets.LobbyData(5, "Lobby 3", "username", ["InsertUniqueName", "hi2"], "bruh", 7),
-            shared_assets.LobbyData(2, "Lob (but the name's longer)", "Name",
-                                    ["Username1", "Username2", "username3", "username4", "username5", "username6", "username7"], "Short", 8)
-        ])
 
     mouse_event_handler.main(Menus.menu_active.gui)
     keyboard_event_handler.main(Menus.menu_active.gui)
@@ -627,5 +646,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # network = Network()
+    network = Network()
+    _thread.start_new_thread(message_listener, ())
     main()
