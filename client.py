@@ -1,4 +1,3 @@
-import time
 import pygame
 from shared_assets import LobbyData, game_info, Messages
 from abc import ABC, abstractmethod
@@ -8,6 +7,7 @@ from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboard
 from network import Network
 from utilities import Colors, Vert
 import _thread
+import random
 
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
@@ -15,13 +15,19 @@ pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
 
+username = None
+max_username_length = 18
+
 def message_listener():
     while True:
         message = network.recv()
         print(f"Received {message.style} of type {message.type} from server.")
 
         if message.type == Messages.LobbyListMessage.type:
-            InitializedMenus.multiplayer_menu.set_lobbies(message.lobbies)
+            if isinstance(Menus.menu_active, Menus.MultiplayerMenu):
+                InitializedMenus.multiplayer_menu.set_lobbies(message.lobbies)
+        if message.type == Messages.KickedFromLobbyMessage.type:
+            Menus.set_active_menu(InitializedMenus.multiplayer_menu)
 
 class Menus:
     class Menu(ABC):
@@ -92,11 +98,18 @@ class Menus:
                     return
 
                 if element is self.multiplayer_button:
-                    username = self.username_text_field.text if self.username_text_field.text else default_username
-                    if username:
+                    global username
+
+                    potential_username = self.username_text_field.text
+                    if len(potential_username) == 0 and (default_username := get_default_username()) is not None:
+                        potential_username = default_username
+
+                    if len(potential_username) >= 4:
+                        username = potential_username
                         Menus.set_active_menu(InitializedMenus.multiplayer_menu)
                     else:
                         self.username_text_field.col = self.text_input_error_color
+
                 elif element is self.options_button:
                     Menus.set_active_menu(InitializedMenus.options_menu)
                 elif element is self.exit_button:
@@ -106,7 +119,8 @@ class Menus:
 
             self.button_list = [Gui.TextInput(
                 col=self.text_input_default_color, valid_chars=Gui.TextInput.USERNAME_CHARS,
-                default_text="Username", max_text_length=18, horizontal_align="CENTER", **self.element_mouse_functions
+                default_text="Username", max_text_length=max_username_length, horizontal_align="CENTER",
+                **self.element_mouse_functions
             )]
 
             for title in ["Multiplayer", "Options", "Exit"]:
@@ -284,7 +298,7 @@ class Menus:
 
             @game_id.setter
             def game_id(self, value):
-                if value == self._lobby_data.game_id:
+                if value == self._lobby_data.game_id and self.game_title_element.text == game_info[value].title:
                     return
                 self._lobby_data.game_id = value
 
@@ -339,6 +353,12 @@ class Menus:
                 elif element is self.refresh_button:
                     self.set_lobbies([])
                     network.send(Messages.LobbyListRequest())
+                elif element is self.create_lobby_button:
+                    Menus.set_active_menu(InitializedMenus.lobby_room_menu)
+                    network.send(Messages.CreateLobbyMessage(username))
+                elif element is self.join_lobby_button and self.selected_lobby:
+                    Menus.set_active_menu(InitializedMenus.lobby_room_menu)
+                    network.send(Messages.JoinLobbyMessage(self.selected_lobby.lobby_id, username))
 
             self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
@@ -399,13 +419,6 @@ class Menus:
 
             self.connected_lobbies: list[Menus.MultiplayerMenu.ConnectedLobby] = []
             self._selected_lobby: Union[Menus.MultiplayerMenu.ConnectedLobby, None] = None
-            self.ping_rate = 5
-
-        @staticmethod
-        def ping_for_updates(this_menu):
-            while Menus.menu_active is this_menu:
-                network.send(Messages.LobbyListRequest())
-                time.sleep(this_menu.ping_rate)
 
         def set_lobby_info(self, lobby: ConnectedLobby):
             self.lobby_title.text = lobby.lobby_title
@@ -417,8 +430,8 @@ class Menus:
             if self.raw_player_list_displayed != lobby.players:
                 self.raw_player_list_displayed = lobby.players
                 self.player_list = [[], []]
-                for i, username in enumerate(lobby.players):
-                    self.player_list[i % 2].append((Gui.Text(username, text_align=["LEFT", "CENTER"]),
+                for i, player_name in enumerate(lobby.players):
+                    self.player_list[i % 2].append((Gui.Text(player_name, text_align=["LEFT", "CENTER"]),
                                                     Gui.Circle(no_fill=True)))
                 self.player_list_container.contents = sum(self.player_list[0] + self.player_list[1], start=())
 
@@ -446,15 +459,9 @@ class Menus:
             connected_lobbies_by_id = {lobby.lobby_id: lobby for lobby in self.connected_lobbies}
             incoming_lobbies_by_id = {lobby.lobby_id: lobby for lobby in lobbies}
 
-            print("Started function call")
-
             if set(connected_lobbies_by_id) != set(incoming_lobbies_by_id):
-
-                print(self.connected_lobbies)
-                temp = copy.copy(self.connected_lobbies)
-                # Glitching because del isn't working with the for loop (or something)
-                # The fix i have here works but I assume is VERY slow.
-                for i, lobby in reversed(list(enumerate(temp))):
+                for i in range(len(self.connected_lobbies) - 1, -1, -1):
+                    lobby = self.connected_lobbies[i]
                     if lobby.lobby_id not in incoming_lobbies_by_id:
                         self.lobby_list_background.remove_element(lobby.list_gui_element)
                         self.resize_lobby_list_elements()
@@ -478,8 +485,6 @@ class Menus:
 
             self.resize_lobby_list_elements()
 
-            print(lobbies, self.connected_lobbies, connected_lobbies_by_id, incoming_lobbies_by_id)
-
         def resize_lobby_list_elements(self):
             if len(self.connected_lobbies) == 0:
                 return
@@ -498,18 +503,22 @@ class Menus:
 
                 # font_size * size_per_font_size = element width/2 => font_size = element_width/2 / size_per_font_size
 
-                lobby.title_element.font_size = \
-                    min(lobby.text_container.size.x * 0.75 / lobby.title_element.size_per_font_size.x,
-                        lobby.text_container.size.y * 0.5 / lobby.title_element.size_per_font_size.y)
-                lobby.game_title_element.font_size = \
-                    min(lobby.text_container.size.x * 0.45 / lobby.game_title_element.size_per_font_size.x,
-                        lobby.text_container.size.y * 0.3 / lobby.game_title_element.size_per_font_size.y)
-                lobby.owner_element.font_size = \
-                    min(lobby.text_container.size.x * 0.45 / lobby.owner_element.size_per_font_size.x,
-                        lobby.text_container.size.y * 0.3 / lobby.owner_element.size_per_font_size.y)
-                lobby.player_count_element.font_size = \
-                    min(lobby.text_container.size.x * 0.2 / lobby.player_count_element.size_per_font_size.x,
-                        lobby.text_container.size.y * 0.45 / lobby.player_count_element.size_per_font_size.y)
+                if lobby.title_element.text:
+                    lobby.title_element.font_size = \
+                        min(lobby.text_container.size.x * 0.75 / lobby.title_element.size_per_font_size.x,
+                            lobby.text_container.size.y * 0.5 / lobby.title_element.size_per_font_size.y)
+                if lobby.game_title_element.text:
+                    lobby.game_title_element.font_size = \
+                        min(lobby.text_container.size.x * 0.45 / lobby.game_title_element.size_per_font_size.x,
+                            lobby.text_container.size.y * 0.3 / lobby.game_title_element.size_per_font_size.y)
+                if lobby.owner_element.text:
+                    lobby.owner_element.font_size = \
+                        min(lobby.text_container.size.x * 0.45 / lobby.owner_element.size_per_font_size.x,
+                            lobby.text_container.size.y * 0.3 / lobby.owner_element.size_per_font_size.y)
+                if lobby.player_count_element.text:
+                    lobby.player_count_element.font_size = \
+                        min(lobby.text_container.size.x * 0.2 / lobby.player_count_element.size_per_font_size.x,
+                            lobby.text_container.size.y * 0.45 / lobby.player_count_element.size_per_font_size.y)
 
         def resize_lobby_info_elements(self):
             self.game_image.size = Vert(1, 1) * min(self.lobby_info.size.x / 2, self.lobby_info.size.y / 2)
@@ -596,12 +605,19 @@ class Menus:
             self.resize_lobby_list_elements()
             self.resize_lobby_info_elements()
 
+    class LobbyRoom(Menu):
+        def __init__(self):
+            super().__init__()
+
+        def resize_elements(self):
+            ...
+
     @classmethod
     def set_active_menu(cls, value):
         cls.menu_active = value
 
         if isinstance(cls.menu_active, Menus.MultiplayerMenu):
-            _thread.start_new_thread(cls.menu_active.ping_for_updates, (cls.menu_active,))
+            network.send(Messages.LobbyListRequest())
 
         cls.menu_active.resize_elements()
 
@@ -611,11 +627,31 @@ class InitializedMenus:
     title_screen_menu = Menus.TitleScreenMenu()
     options_menu = Menus.OptionsMenu()
     multiplayer_menu = Menus.MultiplayerMenu()
+    lobby_room_menu = Menus.LobbyRoom()
 
     Menus.set_active_menu(title_screen_menu)
 
 
-default_username = "DefaultUsername"
+def get_default_username():
+    nouns = ["thought", "database", "college", "cigarette", "actor", "ratio", "guest", "economics", "coffee",
+             "judgment", "sympathy", "professor", "knowledge", "tongue", "police", "library", "drawer", "man", "thing",
+             "art", "moment", "church", "news", "guitar", "reading", "tooth", "flight", "child",
+             "shirt", "safety", "penalty", "painting", "bonus", "steak", "meal", "device", "youth", "reaction", "woman",
+             "love", "person", "teacher", "member", "city", "family", "phone", "therapist", "marriage"]
+    adjectives = ["wandering", "accurate", "mature", "receptive", "sordid", "ambitious", "chilly", "hard", "shaggy",
+                  "handsome", "awesome", "dramatic", "straight", "vivacious", "offbeat", "enormous", "transgender",
+                  "woebegone", "civil", "wise", "selective", "puffy", "nostalgic", "angry", "lying", "panoramic",
+                  "marvelous", "boring", "splendid", "wet", "popular", "dark", "intense", "pink", "unlikely",
+                  "tiresome", "fearless", "proud", "rustic", "soft", "large", "explicit", "possessed", "influential"]
+    verbs = ["retiring", "hiding", "observing", "waiting", "crashing", "departing", "transitioning"
+             "arriving", "jumping", "suspecting", "functioning", "accounting", "preparing", "spoiling",
+             "toiling", "questioning", "shopping", "quelling", "screaming", "inspiring", "thrusting",
+             "entertaining", "compelling", "marketing", "wandering"]
+
+    while len(default_username := random.choice(adjectives + verbs).capitalize() + random.choice(nouns).capitalize()) \
+            > max(max_username_length, 6): ...
+    return default_username
+
 keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
@@ -634,7 +670,6 @@ def main():
         for event in pygame.event.get():
             keyboard_event_handler.handle_pygame_keyboard_event(event)
             if event.type == pygame.QUIT:
-                # TODO: Disconnect from lobby when this runs
                 canvas_active = False
             elif event.type == pygame.WINDOWRESIZED:
                 Menus.menu_active.resize_elements()
@@ -643,6 +678,8 @@ def main():
 
         clock.tick(60)
         pygame.display.flip()
+
+    network.send(Messages.DisconnectMessage())
 
 
 if __name__ == "__main__":

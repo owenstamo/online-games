@@ -31,5 +31,5 @@ class Network:
 
     def recv(self):
         incoming_message = self.client.recv(4096)
+        print(f"Received message of length {len(incoming_message)}: {incoming_message}")
         return pickle.loads(incoming_message)
-

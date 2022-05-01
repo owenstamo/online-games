@@ -43,10 +43,17 @@ class LobbyData:
 class Messages:
     class Message:
         style = "message"
-        type = "default"
+        type = "default_message"
 
     class Request:
         style = "request"
+        type = "default_request"
+
+    class DisconnectMessage(Message):
+        type = "disconnect"
+
+        def __init__(self):
+            ...  # Does this have to include the client's active gui? (it shouldn't and anyway, that would be bad).
 
     # region Multiplayer menu related messages
     class LobbyListRequest(Request):
@@ -57,6 +64,38 @@ class Messages:
 
         def __init__(self, lobbies: list[LobbyData]):
             self.lobbies = lobbies
+
+    class CreateLobbyMessage(Message):
+        type = "create_lobby"
+
+        def __init__(self, username: str):
+            self.username = username
+
+    class JoinLobbyMessage(Message):
+        type = "join_lobby"
+
+        def __init__(self, lobby_id, username):
+            self.lobby_id = lobby_id
+            self.username = username
+
+    class LeaveLobbyMessage(Message):
+        type = "leave_lobby"
+
+        def __init__(self, lobby_id, username):
+            self.lobby_id = lobby_id
+            self.username = username
+
+    class CannotJoinLobbyMessage(Message):
+        type = "cannot_join_lobby"
+
+        def __init__(self, error):
+            self.error = error
+
+    class KickedFromLobbyMessage(Message):
+        type = "kicked_from_lobby"
+
+        def __init__(self, reason=None):
+            self.reason = reason
     # endregion
 
 class MessageTypes:
@@ -73,8 +112,7 @@ class GameIds:
 
 
 game_info = {
-    GameIds.snake: GameInfo("Snake", "*insert_image_here*"),
-    GameIds.pong: GameInfo("Pong", "*insert_image_here*")
+    None: GameInfo("No Game Selected", "*insert_blank_image_here*"),
+    GameIds.snake: GameInfo("Snake", "*insert_snake_image_here*"),
+    GameIds.pong: GameInfo("Pong", "*insert_pong_image_here*")
 }
-
-

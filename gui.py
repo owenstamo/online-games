@@ -824,7 +824,6 @@ class Gui:
             if prev_value != self._size:
                 self.reevaluate_bounding_box()
 
-
         @property
         def text(self):
             return self.text_element.text if self.has_been_selected_yet else ""
