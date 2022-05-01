@@ -682,6 +682,7 @@ class Gui:
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
     class TextInput(Rect, MouseInteractable):
+        # TODO: Add prefix + postfix text? Or just a function that takes in the text and outputs the contents.
         SHIFTED_CHARS = {lower: upper for lower, upper in
                          zip(r"`1234567890-=qwertyuiop[]\asdfghjkl;'zxcvbnm,./",
                              r'~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>?')}

@@ -31,5 +31,8 @@ class Network:
 
     def recv(self):
         incoming_message = self.client.recv(4096)
-        print(f"Received message of length {len(incoming_message)}: {incoming_message}")
-        return pickle.loads(incoming_message)
+        # print(f"Received message of length {len(incoming_message)}: {incoming_message}")
+        try:
+            return pickle.loads(incoming_message)
+        except EOFError as e:
+            return shared_assets.Messages.ErrorMessage(e)

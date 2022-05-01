@@ -98,6 +98,12 @@ class Messages:
             self.reason = reason
     # endregion
 
+    class ErrorMessage(Message):
+        type = "error"
+
+        def __init__(self, error=None):
+            self.error = error
+
 class MessageTypes:
     multiplayer_menu_lobby = "multiplayer_menu_lobby"
 

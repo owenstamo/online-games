@@ -5,7 +5,7 @@ import pickle
 from typing import Union
 from shared_assets import Messages, port, GameIds, LobbyData
 
-lobbies: dict[Lobby] = {}
+lobbies: dict[str: Lobby] = {}
 
 class Lobby:
     available_lobby_id = 0
@@ -20,7 +20,7 @@ class Lobby:
         self.player_clients: list[ConnectedClient] = [owner]
 
         self.game_id = None
-        self.max_players = None
+        self.max_players = 2
 
         self.private = True  # self.closed = True/False (the name may be more accurate)
         # self.password = None
@@ -83,12 +83,16 @@ class Server:
     @staticmethod
     def send(client, message):
         outgoing_message = pickle.dumps(message)
-        client.sendall(outgoing_message)
+        try:
+            client.sendall(outgoing_message)
+        except ConnectionResetError:
+            print("Error: Attempted to send message to closed server. This is likely not an issue.")
 
     @staticmethod
     def recv(client):
         incoming_message = client.recv(4096)
         return pickle.loads(incoming_message)
+
 
 clients_connected = {}
 
@@ -109,7 +113,7 @@ def listen_to_client(client: ConnectedClient):
         try:
             message = server.recv(client.conn)
         except ConnectionResetError:
-            print(f"Received ConnectionResetError from {client.address}")
+            print(f"Received ConnectionResetError from {client.address}. Disconnecting.")
             break
 
         print(f"Received {message.style} of type {message.type} from address {client.address}")
@@ -146,6 +150,11 @@ def listen_to_client(client: ConnectedClient):
         client.lobby_in.remove_player(client)
     del clients_connected[client.client_id]
 
+def console_commands():
+    while True:
+        inp = input()
+        if inp in ["k", "kill"]:
+            break
 
 def listen_for_clients():
     while True:
@@ -163,4 +172,5 @@ def listen_for_clients():
 
 if __name__ == "__main__":
     server = Server()
-    listen_for_clients()
+    _thread.start_new_thread(listen_for_clients, ())
+    console_commands()

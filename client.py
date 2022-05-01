@@ -15,7 +15,7 @@ pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
 
-username = None
+username = ""
 max_username_length = 18
 
 def message_listener():
@@ -356,9 +356,10 @@ class Menus:
                 elif element is self.create_lobby_button:
                     Menus.set_active_menu(InitializedMenus.lobby_room_menu)
                     network.send(Messages.CreateLobbyMessage(username))
-                elif element is self.join_lobby_button and self.selected_lobby:
-                    Menus.set_active_menu(InitializedMenus.lobby_room_menu)
-                    network.send(Messages.JoinLobbyMessage(self.selected_lobby.lobby_id, username))
+                elif element is self.join_lobby_button:
+                    if self.selected_lobby and self.selected_lobby.player_count < self.selected_lobby.max_players:
+                        Menus.set_active_menu(InitializedMenus.lobby_room_menu)
+                        network.send(Messages.JoinLobbyMessage(self.selected_lobby.lobby_id, username))
 
             self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
@@ -606,6 +607,21 @@ class Menus:
             self.resize_lobby_info_elements()
 
     class LobbyRoom(Menu):
+        # How should I change between owner and lobby member gui? Should I have it as a whole other class under LobbyRoom?
+        class MemberOptionsMenu:
+            def __init__(self):
+                ...
+
+            def resize_elements(self):
+                ...
+
+        class OwnerOptionsMenu:
+            def __init__(self):
+                ...
+
+            def resize_elements(self):
+                ...
+
         def __init__(self):
             super().__init__()
 
@@ -649,8 +665,10 @@ def get_default_username():
              "entertaining", "compelling", "marketing", "wandering"]
 
     while len(default_username := random.choice(adjectives + verbs).capitalize() + random.choice(nouns).capitalize()) \
-            > max(max_username_length, 6): ...
+            > max(max_username_length, 6):
+        ...
     return default_username
+
 
 keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
