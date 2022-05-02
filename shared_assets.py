@@ -29,13 +29,13 @@ class Lobby:
 class LobbyData:
     def __init__(self, lobby_id: int,
                  lobby_title: Union[str, None] = None,
-                 owner: Union[str, None] = None,
+                 host: Union[str, None] = None,
                  players: Union[list[str], None] = None,
                  game_id=None,
                  max_players: Union[int, None] = None):
         self.lobby_id = lobby_id
         self.lobby_title = lobby_title
-        self.owner = owner
+        self.host = host
         self.game_id = game_id
         self.players = players
         self.max_players = max_players

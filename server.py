@@ -10,14 +10,14 @@ lobbies: dict[str: Lobby] = {}
 class Lobby:
     available_lobby_id = 0
 
-    def __init__(self, owner: ConnectedClient):
+    def __init__(self, host: ConnectedClient):
         self.lobby_id = Lobby.available_lobby_id
         Lobby.available_lobby_id += 1
 
         self.title: str = "New Lobby"
 
-        self.owner_client: ConnectedClient = owner
-        self.player_clients: list[ConnectedClient] = [owner]
+        self.host_client: ConnectedClient = host
+        self.player_clients: list[ConnectedClient] = [host]
 
         self.game_id = None
         self.max_players = 2
@@ -25,7 +25,7 @@ class Lobby:
         self.private = True  # self.closed = True/False (the name may be more accurate)
         # self.password = None
 
-    # def change_owner(self, new_owner: ):
+    # def change_host(self, new_host: ):
 
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
@@ -37,8 +37,8 @@ class Lobby:
             delete_lobby(self)
             return
 
-        if player is self.owner_client:
-            self.owner_client = self.player_clients[0]
+        if player is self.host_client:
+            self.host_client = self.player_clients[0]
             # TODO: Change client's gui here ^^
 
         send_lobbies_to_each_client()
@@ -47,7 +47,7 @@ class Lobby:
         return LobbyData(
             self.lobby_id,
             self.title,
-            self.owner_client.username,
+            self.host_client.username,
             [client.username for client in self.player_clients],
             self.game_id,
             self.max_players

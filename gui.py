@@ -223,6 +223,8 @@ class Gui:
             self._contents += elements
             self.reevaluate_bounding_box()
 
+            return elements
+
         def remove_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]],
                            raise_error_if_not_found: bool = False):
             if isinstance(elements, Sequence):
@@ -721,8 +723,8 @@ class Gui:
                                  text_bounding_box.top_right.list, text_bounding_box.bottom_right.list,
                                  int(self.cursor_width_multiplier * self.text_element.font_size / 15))
 
-        def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), valid_chars=WHOLE_KEYBOARD,
-                     default_text: str = "", max_text_length: Union[int, None] = None, horizontal_align="LEFT",
+        def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), text: str = "", valid_chars=WHOLE_KEYBOARD,
+                     empty_text: str = "", max_text_length: Union[int, None] = None, horizontal_align="LEFT",
                      cursor_width_multiplier: float = 1, cursor_blink_secs: float = 0.75, **kwargs):
             Gui.Rect.__init__(self, pos, **kwargs)
 
@@ -732,14 +734,14 @@ class Gui:
 
             self.max_text_length = math.inf if max_text_length is None else max_text_length
             self.has_been_selected_yet = False
-            self.default_text = default_text
+            self.empty_text = empty_text
 
             # Number to be multiplied by this element's text's height to find its left and right padding
             self.text_padding_scalar = 0.25
             text_offset = {"LEFT": Vert(self.text_padding_scalar, 0),
                            "CENTER": Vert(0, 0),
                            "RIGHT": Vert(-self.text_padding_scalar, 0)}[horizontal_align]
-            self.text_element = Gui.Text(default_text,
+            self.text_element = Gui.Text(empty_text if text == "" else text,
                                          text_align=[horizontal_align, "CENTER"],
                                          on_draw_before=get_auto_center_function(
                                              align=[horizontal_align, "CENTER"],
@@ -761,7 +763,7 @@ class Gui:
 
         def reset_text(self):
             self.has_been_selected_yet = False
-            self.text_element.text = self.default_text
+            self.text_element.text = self.empty_text
 
         def set_selected(self, selected: bool = True, button: Union[int, None] = None):
             """
