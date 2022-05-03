@@ -209,6 +209,7 @@ class Gui:
             self.contents = contents
 
         def add_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]]):
+            orig_elements = [element for element in elements] if isinstance(elements, Sequence) else elements
             if isinstance(elements, Sequence):
                 for element in elements:
                     if not isinstance(element, Gui.GuiElement):
@@ -220,10 +221,11 @@ class Gui:
 
             for element in elements:
                 element.parent = self
+
             self._contents += elements
             self.reevaluate_bounding_box()
 
-            return elements
+            return orig_elements
 
         def remove_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]],
                            raise_error_if_not_found: bool = False):

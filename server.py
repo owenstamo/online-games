@@ -2,8 +2,7 @@ from __future__ import annotations
 import socket
 import _thread
 import pickle
-from typing import Union
-from shared_assets import Messages, port, GameIds, LobbyData
+from shared_assets import Messages, port, LobbyData
 
 lobbies: dict[str: Lobby] = {}
 
@@ -81,45 +80,48 @@ class Server:
         print("Server started, waiting for client(s) to connect")
 
     @staticmethod
-    def send(client, message):
+    def send(client, message: Messages.Message):
         outgoing_message = pickle.dumps(message)
         try:
-            client.sendall(outgoing_message)
+            client.conn.sendall(outgoing_message)
+            print(f"  [S] Sent {message.style} of type {message.type} to address {client.address}")
         except ConnectionResetError:
-            print("Error: Attempted to send message to closed server. This is likely not an issue.")
+            print(f"Error: Attempted to send {message.style} of type {message.type} to closed client at address {client.address}. This is likely not an issue.")
 
     @staticmethod
     def recv(client):
-        incoming_message = client.recv(4096)
-        return pickle.loads(incoming_message)
+        incoming_message = client.conn.recv(4096)
+        message = pickle.loads(incoming_message)
+        print(f"  [R] Received {message.style} of type {message.type} from address {client.address}")
+        return message
 
 
 clients_connected = {}
 
 def delete_lobby(lobby: Lobby):
     for client in lobby.player_clients:
-        server.send(client.conn, Messages.KickedFromLobbyMessage())
+        server.send(client, Messages.KickedFromLobbyMessage())
 
     del lobbies[lobby.lobby_id]
 
     send_lobbies_to_each_client()
 
 def send_lobbies_to_each_client():
+    # print(f"Sending lobbies to: {clients_connected}")
     for client in clients_connected.values():
-        server.send(client.conn, Messages.LobbyListMessage([lobby.get_lobby_data() for lobby in lobbies.values()]))
+        if client.lobby_in is None:
+            server.send(client, Messages.LobbyListMessage([lobby.get_lobby_data() for lobby in lobbies.values()]))
 
 def listen_to_client(client: ConnectedClient):
     while True:
         try:
-            message = server.recv(client.conn)
+            message = server.recv(client)
         except ConnectionResetError:
-            print(f"Received ConnectionResetError from {client.address}. Disconnecting.")
+            print(f"Error: Received ConnectionResetError from {client.address}. Disconnecting.")
             break
 
-        print(f"Received {message.style} of type {message.type} from address {client.address}")
-
         if message.type == Messages.LobbyListRequest.type:
-            server.send(client.conn, Messages.LobbyListMessage([lobby.get_lobby_data() for lobby in lobbies.values()]))
+            server.send(client, Messages.LobbyListMessage([lobby.get_lobby_data() for lobby in lobbies.values()]))
 
         elif message.type == Messages.CreateLobbyMessage.type:
             client.username = message.username
@@ -145,10 +147,16 @@ def listen_to_client(client: ConnectedClient):
         elif message.type == Messages.DisconnectMessage.type:
             break
 
+        elif message.type == Messages.LeaveLobbyMessage.type:
+            client.lobby_in.remove_player(client)
+            client.lobby_in = None
+
     print(f"Disconnected from {client.address}")
+
+    del clients_connected[client.client_id]
+
     if client.lobby_in is not None:
         client.lobby_in.remove_player(client)
-    del clients_connected[client.client_id]
 
 def console_commands():
     while True:
@@ -166,6 +174,8 @@ def listen_for_clients():
         while client_id in clients_connected:
             client_id += 1
         clients_connected[client_id] = client = ConnectedClient(client_id, conn, address)
+
+        server.send(client, Messages.ConnectedMessage(address))
 
         _thread.start_new_thread(listen_to_client, (client,))
 

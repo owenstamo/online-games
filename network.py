@@ -22,17 +22,20 @@ class Network:
             except TimeoutError:
                 print("Could not find server, trying again...")
                 # When this happens
-        print("Connected!")
+        print(f"Connected with address {self.recv().address}!")
 
     def send(self, message):
         outgoing_message = pickle.dumps(message)
-        # print(len(outgoing_message))
         self.client.send(outgoing_message)
+        print(f"  [S] Sent {message.style} of type {message.type} to the server")
 
     def recv(self):
         incoming_message = self.client.recv(4096)
-        # print(f"Received message of length {len(incoming_message)}: {incoming_message}")
         try:
-            return pickle.loads(incoming_message)
+            message = pickle.loads(incoming_message)
         except EOFError as e:
-            return shared_assets.Messages.ErrorMessage(e)
+            message = shared_assets.Messages.ErrorMessage(e)
+
+        print(f"  [R] Received {message.style} of type {message.type} from server.")
+        return message
+

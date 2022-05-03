@@ -17,11 +17,11 @@ canvas_active = True
 
 username = ""
 max_username_length = 18
+max_lobby_name_length = 30
 
 def message_listener():
     while True:
         message = network.recv()
-        print(f"Received {message.style} of type {message.type} from server.")
 
         if message.type == Messages.LobbyListMessage.type:
             if isinstance(Menus.menu_active, Menus.MultiplayerMenu):
@@ -40,6 +40,10 @@ class Menus:
         text_input_mouse_holding_color = (230,) * 3
         text_input_mouse_over_color = (245,) * 3
         text_input_error_color = (255, 240, 240)
+
+        @staticmethod
+        def reset_button_color(element, default_color=button_default_color, mouse_over_color=button_mouse_over_color):
+            element.col = mouse_over_color if element.mouse_is_over else default_color
 
         def __init__(self):
             self.gui = Gui.ContainerElement(Vert(0, 0))
@@ -146,7 +150,7 @@ class Menus:
 
             button_size = Vert(400, 50)
             # Multiplying canvas_scale.x means that it will not have an effect on the size until a certain width
-            text_scale = min(1, canvas_scale.x * 1.8, canvas_scale.y)
+            text_scale = min(canvas_scale.x * 1.8, canvas_scale.y)
             for i, button in enumerate(self.button_list):
                 button.size = button_size * canvas_scale
                 button.pos = canvas_size * Vert(0.5, (2.5 + i) / 7) - Vert(button.size.x / 2, 0)
@@ -175,7 +179,7 @@ class Menus:
             canvas_size = Vert(canvas.get_size())
             canvas_scale = canvas_size / Vert(600, 450)
 
-            text_scale = min(1, canvas_scale.x * 1.8, canvas_scale.y)
+            text_scale = min(canvas_scale.x * 1.8, canvas_scale.y)
             button_size = Vert(400, 50)
             for i, button in enumerate(self.button_list):
                 button.size = button_size * canvas_scale
@@ -560,9 +564,9 @@ class Menus:
             for column_num in [0, 1]:
                 for i, element in enumerate(self.player_list[column_num]):
                     text, circle = element
-                    font_size = min(max_font_size,
-                                    (self.player_list_container.size.x * 0.45 - left_padding) / text.size_per_font_size.x)
-                    text.font_size = font_size
+                    if text.text:
+                        text.font_size = min(max_font_size,
+                                             (self.player_list_container.size.x * 0.45 - left_padding) / text.size_per_font_size.x)
                     text.pos = Vert(left_padding + column_num * self.player_list_container.size.x / 2,
                                     (0.5 + i) * spacing + vertical_padding)
 
@@ -588,7 +592,7 @@ class Menus:
             button_list_size = Vert(self.lobby_info.size.x, canvas_size.y - button_list_pos.y - padding.y)
             button_list_padding = (button_list_size.y - 3 * button_size.y) / 2
 
-            text_scale = min(1, canvas_scale.x, canvas_scale.y)
+            text_scale = min(canvas_scale.x, canvas_scale.y)
             for i, button in enumerate(self.button_list + [self.back_button]):
                 button.size = button_size
                 button.contents[0].font_size = base_button_height * text_scale * 0.75
@@ -610,42 +614,105 @@ class Menus:
     #     parent class of other two lobby rooms. handles all shared element sizes, text, positions, etc.
 
     class HostLobbyRoom(Menu):
+        button_grayed_out_color = (230,) * 3
+        text_grayed_out_color = (100,) * 3
+
         def __init__(self):
             super().__init__()
+
+            def element_on_mouse_over(element):
+                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                    return
+
+                mouse_over_color = self.button_mouse_over_color
+                if isinstance(element, Gui.TextInput):
+                    mouse_over_color = self.text_input_mouse_over_color
+
+                if not any(element.mouse_buttons_holding):
+                    element.col = mouse_over_color
+
+            def element_on_mouse_not_over(element):
+                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                    return
+
+                mouse_default_color = self.button_default_color
+                if isinstance(element, Gui.TextInput):
+                    mouse_default_color = self.text_input_default_color
+
+                if not any(element.mouse_buttons_holding):
+                    element.col = mouse_default_color
+
+            def element_on_mouse_down(element, *_):
+                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                    return
+
+                mouse_holding_color = self.button_mouse_holding_color
+                if isinstance(element, Gui.TextInput):
+                    mouse_holding_color = self.text_input_mouse_holding_color
+
+                element.col = mouse_holding_color
+
+            def element_on_mouse_up(element, *_):
+                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                    return
+
+                default_and_mouse_over_colors = [self.button_default_color, self.button_mouse_over_color]
+                if isinstance(element, Gui.TextInput):
+                    default_and_mouse_over_colors = [self.text_input_default_color, self.text_input_mouse_over_color]
+
+                self.reset_button_color(element, *default_and_mouse_over_colors)
+
+                if element is self.game_start_button:
+                    self.player_selected = True
+                elif element is self.leave_button:
+                    network.send(Messages.LeaveLobbyMessage())
+                    Menus.set_active_menu(InitializedMenus.multiplayer_menu)
+
+            self.element_mouse_functions = {
+                "on_mouse_down": [element_on_mouse_down],
+                "on_mouse_up": [element_on_mouse_up],
+                "on_mouse_over": [element_on_mouse_over],
+                "on_mouse_not_over": [element_on_mouse_not_over]
+            }
 
             self.player_name_list = [
                 ("Username", "Member"),
                 ("Username", "Owner")
             ]
 
+            # region Initialize gui elements
             # TODO: Do I want to store the default lobby info in here and send it to server, vise versa, or store it in shared_assets
-            self.lobby_title = Gui.TextInput(text="")
+            self.lobby_title = Gui.TextInput(text="DEFAULT LOBBY TITLE", valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
+                                             max_text_length=max_lobby_name_length, **self.element_mouse_functions)
             self.player_list_container = Gui.Rect(col=(255,) * 3)
             self.game_settings_container = Gui.Rect(col=(190,) * 3)
 
-            self.game_select = Gui.Rect(col=self.button_default_color)
+            self.game_select = Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
 
             self.game_image, self.game_select_text_container = self.game_select.add_element([
-                Gui.Rect(col=(200,) * 3), Gui.BoundingContainer()])
+                Gui.Rect(col=(200,) * 3, ignored_by_mouse=True), Gui.BoundingContainer()])
             self.game_select_text = self.game_select_text_container.add_element(
                 Gui.Text("Select Game", **self.new_text_parameters))
 
-            self.kick_player_button, self.promote_player_button = self.player_action_buttons = [
-                Gui.Rect(col=self.button_default_color), Gui.Rect(col=self.button_default_color)
+            self.kick_player_button, self.promote_player_button = [
+                Gui.Rect(col=self.button_default_color, **self.element_mouse_functions),
+                Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
             ]
             self.kick_player_button_text = self.kick_player_button.add_element(
                 Gui.Text("Kick Player", **self.new_text_parameters))
             self.promote_player_button_text = self.promote_player_button.add_element(
                 Gui.Text("Promote Player", **self.new_text_parameters))
 
-            self.game_start_button = Gui.Rect(col=self.button_default_color)
+            self.game_start_button = Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
+            self.game_start_button_text = self.game_start_button.add_element(
+                Gui.Text("Start Game", **self.new_text_parameters))
 
             self.leave_button, self.toggle_close_button, self.toggle_chat_button = [
-                Gui.Rect(col=self.button_default_color) for _ in range(3)]
+                Gui.Rect(col=self.button_default_color, **self.element_mouse_functions) for _ in range(3)]
             self.leave_button_text = self.leave_button.add_element(
                 Gui.Text("Leave", **self.new_text_parameters))
             self.toggle_close_button_text = self.toggle_close_button.add_element(
-                Gui.Text("Close\nLobby", **self.new_text_parameters))
+                Gui.Text("Close Lobby", **self.new_text_parameters))
             self.toggle_chat_button_text = self.toggle_chat_button.add_element(
                 Gui.Text("Chat", **self.new_text_parameters))
 
@@ -653,9 +720,30 @@ class Menus:
                                   self.player_list_container, self.game_settings_container, self.game_start_button,
                                   self.kick_player_button, self.promote_player_button,
                                   self.leave_button, self.toggle_close_button, self.toggle_chat_button])
+            # endregion
+
+            self.player_selected = None
+
+        @property
+        def player_selected(self):
+            return self._player_selected
+
+        @player_selected.setter
+        def player_selected(self, value):
+            self._player_selected = value
+            if value is None:
+                self.promote_player_button.col = self.kick_player_button.col = self.button_grayed_out_color
+                self.promote_player_button_text.col = self.kick_player_button_text.col = self.text_grayed_out_color
+            else:
+                self.reset_button_color(self.promote_player_button)
+                self.reset_button_color(self.kick_player_button)
+                self.promote_player_button_text.col = self.kick_player_button_text.col = (0,) * 3
 
         def resize_elements(self):
             # TODO: Resizing everything individually can be laggy as heck (recalculating bounding boxes every time)
+
+            # TODO: Sometimes I'm relying on other button's positions/sizes and sometimes I'm not. Doing so can be funky.
+            #  Actually maybe it's not funky (do I ever have to convert to integer, or is that just for font size?)
             canvas_size = Vert(canvas.get_size())
             canvas_scale = canvas_size / Vert(600, 450)
             padding = Vert(1, 1) * min(canvas_size.x, canvas_size.y) / 30
@@ -665,27 +753,50 @@ class Menus:
 
             self.lobby_title.pos, self.lobby_title.size = padding, button_size
 
-            self.game_select.pos, self.game_select.size = \
-                Vert(canvas_size.x - padding.x - button_size.x, padding.y), button_size
+            self.game_select.pos = Vert(canvas_size.x - padding.x - button_size.x, padding.y)
+            self.game_select.size = Vert(button_size.x, base_button_height * min(canvas_scale.x, canvas_scale.y))
+            self.game_image.size = Vert(1, 1) * self.game_select.size.y
+            self.game_select_text_container.pos, self.game_select_text_container.size = \
+                Vert(self.game_image.size.x, 0), self.game_select.size - Vert(self.game_image.size.x, 0)
 
             self.game_start_button.pos, self.game_start_button.size = canvas_size - padding - button_size, button_size
 
-            self.leave_button.size = button_size * Vert(2/5, 1)
-            self.toggle_close_button.size = button_size * Vert(2/5, 1)
-            self.toggle_chat_button.size = button_size * Vert(1/5, 1)
+            button_sizes = [Vert(2/5, 1), Vert(2/5, 1), Vert(1/5, 1)]
+            self.leave_button.size = button_size * button_sizes[0] + Vert(2, 0)
+            self.toggle_close_button.size = button_size * button_sizes[1] + Vert(2, 0)
+            self.toggle_chat_button.size = button_size * button_sizes[2]
 
-            # TODO: This method makes it so I only have to type the 2/5, etc. once, but can make it look funky (integers are dumb)
             self.leave_button.pos = Vert(padding.x, canvas_size.y - padding.y - button_size.y)
-            self.toggle_close_button.pos = Vert(self.leave_button.pos.x + self.leave_button.size.x,
+            self.toggle_close_button.pos = Vert(self.leave_button.pos.x + button_size.x * button_sizes[0].x,
                                                 canvas_size.y - padding.y - button_size.y)
-            self.toggle_chat_button.pos = Vert(self.toggle_close_button.pos.x + self.toggle_close_button.size.x,
+            self.toggle_chat_button.pos = Vert(self.toggle_close_button.pos.x + button_size.x * button_sizes[1].x,
                                                canvas_size.y - padding.y - button_size.y)
 
             self.kick_player_button.size = self.promote_player_button.size = (button_size - Vert(padding.x, 0)) * Vert(0.5, 0.75)
-            self.kick_player_button.pos = Vert(canvas_size.x / 2 + padding.x / 2,
+            self.kick_player_button.pos = Vert(padding.x,
                                                self.leave_button.pos.y - padding.y - self.kick_player_button.size.y)
-            self.promote_player_button.pos = Vert(canvas_size.x / 2 + padding.x * 1.5 + self.kick_player_button.size.x,
+            self.promote_player_button.pos = Vert(self.kick_player_button.pos.x + self.kick_player_button.size.x + padding.x,
                                                   self.leave_button.pos.y - padding.y - self.kick_player_button.size.y)
+
+            self.player_list_container.pos = self.lobby_title.pos + Vert(0, self.lobby_title.size.y + padding.y)
+            self.player_list_container.size = Vert(button_size.x,
+                                                   self.kick_player_button.pos.y - self.player_list_container.pos.y - padding.y)
+
+            self.game_settings_container.pos = self.game_select.pos + Vert(0, self.game_select.size.y + padding.y)
+            self.game_settings_container.size = Vert(button_size.x,
+                                                     self.game_start_button.pos.y - self.game_settings_container.pos.y - padding.y)
+
+            text_scale = min(canvas_scale.x, canvas_scale.y)
+            self.game_select_text.font_size = \
+                min(self.game_select_text_container.size.x * 0.9 / self.game_select_text.size_per_font_size.x,
+                    self.game_select_text_container.size.y * 0.75 / self.game_select_text.size_per_font_size.y)
+            self.game_start_button_text.font_size = base_button_height * 0.75 * text_scale
+            self.leave_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.75, canvas_scale.y)
+            self.toggle_close_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.5, canvas_scale.y)
+            self.toggle_chat_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.6, canvas_scale.y)
+
+            self.kick_player_button_text.font_size = base_button_height * 0.75 * 0.75 * min(canvas_scale.x * 0.7, canvas_scale.y)
+            self.promote_player_button_text.font_size = base_button_height * 0.75 * 0.75 * min(canvas_scale.x * 0.6, canvas_scale.y)
 
     @classmethod
     def set_active_menu(cls, value):
@@ -705,7 +816,7 @@ class InitializedMenus:
     lobby_room_menu = Menus.HostLobbyRoom()
     # TODO: Set to owner/member lobby room when room is created/joined
 
-    Menus.set_active_menu(lobby_room_menu)
+    Menus.set_active_menu(title_screen_menu)
 
 
 def get_default_username():

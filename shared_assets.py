@@ -45,9 +45,15 @@ class Messages:
         style = "message"
         type = "default_message"
 
-    class Request:
+    class Request(Message):
         style = "request"
         type = "default_request"
+
+    class ConnectedMessage(Message):
+        type = "connected"
+
+        def __init__(self, address):
+            self.address = address
 
     class DisconnectMessage(Message):
         type = "disconnect"
@@ -80,10 +86,6 @@ class Messages:
 
     class LeaveLobbyMessage(Message):
         type = "leave_lobby"
-
-        def __init__(self, lobby_id, username):
-            self.lobby_id = lobby_id
-            self.username = username
 
     class CannotJoinLobbyMessage(Message):
         type = "cannot_join_lobby"
