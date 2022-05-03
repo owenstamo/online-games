@@ -74,8 +74,10 @@ class Messages:
     class CreateLobbyMessage(Message):
         type = "create_lobby"
 
-        def __init__(self, username: str):
+        def __init__(self, username: str, lobby_title: str, private: bool = False):
             self.username = username
+            self.lobby_title = lobby_title
+            self.private = private
 
     class JoinLobbyMessage(Message):
         type = "join_lobby"
@@ -100,14 +102,19 @@ class Messages:
             self.reason = reason
     # endregion
 
+    class ChangeLobbySettingsMessage(Message):
+        type = "change_lobby_settings"
+        unchanged = "unchanged"
+
+        def __init__(self, lobby_title=unchanged, private: bool = unchanged):
+            self.lobby_title = lobby_title
+            self.private = private
+
     class ErrorMessage(Message):
         type = "error"
 
         def __init__(self, error=None):
             self.error = error
-
-class MessageTypes:
-    multiplayer_menu_lobby = "multiplayer_menu_lobby"
 
 class GameInfo:
     def __init__(self, title, image):

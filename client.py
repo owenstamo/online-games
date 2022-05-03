@@ -18,6 +18,7 @@ canvas_active = True
 username = ""
 max_username_length = 18
 max_lobby_name_length = 30
+default_lobby_title = "New Lobby"
 
 def message_listener():
     while True:
@@ -358,8 +359,9 @@ class Menus:
                     self.set_lobbies([])
                     network.send(Messages.LobbyListRequest())
                 elif element is self.create_lobby_button:
+                    InitializedMenus.lobby_room_menu = Menus.HostLobbyRoom()
                     Menus.set_active_menu(InitializedMenus.lobby_room_menu)
-                    network.send(Messages.CreateLobbyMessage(username))
+                    network.send(Messages.CreateLobbyMessage(username, default_lobby_title))
                 elif element is self.join_lobby_button:
                     if self.selected_lobby and self.selected_lobby.player_count < self.selected_lobby.max_players:
                         Menus.set_active_menu(InitializedMenus.lobby_room_menu)
@@ -667,6 +669,12 @@ class Menus:
                 elif element is self.leave_button:
                     network.send(Messages.LeaveLobbyMessage())
                     Menus.set_active_menu(InitializedMenus.multiplayer_menu)
+                elif element is self.toggle_private_button:
+                    self.private = not self.private
+                    network.send(Messages.ChangeLobbySettingsMessage(private=self.private))
+
+            def on_text_input_deselect(*_):
+                network.send(Messages.ChangeLobbySettingsMessage(lobby_title=self.lobby_title.text))
 
             self.element_mouse_functions = {
                 "on_mouse_down": [element_on_mouse_down],
@@ -681,9 +689,9 @@ class Menus:
             ]
 
             # region Initialize gui elements
-            # TODO: Do I want to store the default lobby info in here and send it to server, vise versa, or store it in shared_assets
-            self.lobby_title = Gui.TextInput(text="DEFAULT LOBBY TITLE", valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
-                                             max_text_length=max_lobby_name_length, **self.element_mouse_functions)
+            self.lobby_title = Gui.TextInput(text=default_lobby_title, valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
+                                             max_text_length=max_lobby_name_length, on_deselect=on_text_input_deselect,
+                                             **self.element_mouse_functions)
             self.player_list_container = Gui.Rect(col=(255,) * 3)
             self.game_settings_container = Gui.Rect(col=(190,) * 3)
 
@@ -707,22 +715,35 @@ class Menus:
             self.game_start_button_text = self.game_start_button.add_element(
                 Gui.Text("Start Game", **self.new_text_parameters))
 
-            self.leave_button, self.toggle_close_button, self.toggle_chat_button = [
+            self.leave_button, self.toggle_private_button, self.toggle_chat_button = [
                 Gui.Rect(col=self.button_default_color, **self.element_mouse_functions) for _ in range(3)]
             self.leave_button_text = self.leave_button.add_element(
                 Gui.Text("Leave", **self.new_text_parameters))
-            self.toggle_close_button_text = self.toggle_close_button.add_element(
-                Gui.Text("Close Lobby", **self.new_text_parameters))
+            self.toggle_private_button_text = self.toggle_private_button.add_element(
+                Gui.Text("Private Lobby", **self.new_text_parameters))
             self.toggle_chat_button_text = self.toggle_chat_button.add_element(
                 Gui.Text("Chat", **self.new_text_parameters))
 
             self.gui.add_element([self.lobby_title, self.game_select,
                                   self.player_list_container, self.game_settings_container, self.game_start_button,
                                   self.kick_player_button, self.promote_player_button,
-                                  self.leave_button, self.toggle_close_button, self.toggle_chat_button])
+                                  self.leave_button, self.toggle_private_button, self.toggle_chat_button])
             # endregion
 
             self.player_selected = None
+            self.private = False
+
+        @property
+        def private(self):
+            return self._private
+
+        @private.setter
+        def private(self, value):
+            self._private = value
+            if value:
+                self.toggle_private_button_text.text = "Set Open"
+            else:
+                self.toggle_private_button_text.text = "Set Private"
 
         @property
         def player_selected(self):
@@ -763,13 +784,13 @@ class Menus:
 
             button_sizes = [Vert(2/5, 1), Vert(2/5, 1), Vert(1/5, 1)]
             self.leave_button.size = button_size * button_sizes[0] + Vert(2, 0)
-            self.toggle_close_button.size = button_size * button_sizes[1] + Vert(2, 0)
+            self.toggle_private_button.size = button_size * button_sizes[1] + Vert(2, 0)
             self.toggle_chat_button.size = button_size * button_sizes[2]
 
             self.leave_button.pos = Vert(padding.x, canvas_size.y - padding.y - button_size.y)
-            self.toggle_close_button.pos = Vert(self.leave_button.pos.x + button_size.x * button_sizes[0].x,
+            self.toggle_private_button.pos = Vert(self.leave_button.pos.x + button_size.x * button_sizes[0].x,
                                                 canvas_size.y - padding.y - button_size.y)
-            self.toggle_chat_button.pos = Vert(self.toggle_close_button.pos.x + button_size.x * button_sizes[1].x,
+            self.toggle_chat_button.pos = Vert(self.toggle_private_button.pos.x + button_size.x * button_sizes[1].x,
                                                canvas_size.y - padding.y - button_size.y)
 
             self.kick_player_button.size = self.promote_player_button.size = (button_size - Vert(padding.x, 0)) * Vert(0.5, 0.75)
@@ -792,7 +813,7 @@ class Menus:
                     self.game_select_text_container.size.y * 0.75 / self.game_select_text.size_per_font_size.y)
             self.game_start_button_text.font_size = base_button_height * 0.75 * text_scale
             self.leave_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.75, canvas_scale.y)
-            self.toggle_close_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.5, canvas_scale.y)
+            self.toggle_private_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.5, canvas_scale.y)
             self.toggle_chat_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.6, canvas_scale.y)
 
             self.kick_player_button_text.font_size = base_button_height * 0.75 * 0.75 * min(canvas_scale.x * 0.7, canvas_scale.y)
@@ -813,7 +834,7 @@ class InitializedMenus:
     title_screen_menu = Menus.TitleScreenMenu()
     options_menu = Menus.OptionsMenu()
     multiplayer_menu = Menus.MultiplayerMenu()
-    lobby_room_menu = Menus.HostLobbyRoom()
+    lobby_room_menu = None
     # TODO: Set to owner/member lobby room when room is created/joined
 
     Menus.set_active_menu(title_screen_menu)

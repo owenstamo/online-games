@@ -9,11 +9,11 @@ lobbies: dict[str: Lobby] = {}
 class Lobby:
     available_lobby_id = 0
 
-    def __init__(self, host: ConnectedClient):
+    def __init__(self, host: ConnectedClient, title: str = "", private: bool = False):
         self.lobby_id = Lobby.available_lobby_id
         Lobby.available_lobby_id += 1
 
-        self.title: str = "New Lobby"
+        self.title: str = title
 
         self.host_client: ConnectedClient = host
         self.player_clients: list[ConnectedClient] = [host]
@@ -21,7 +21,7 @@ class Lobby:
         self.game_id = None
         self.max_players = 2
 
-        self.private = True  # self.closed = True/False (the name may be more accurate)
+        self.private = private  # self.closed = True/False (the name may be more accurate)
         # self.password = None
 
     # def change_host(self, new_host: ):
@@ -110,7 +110,8 @@ def send_lobbies_to_each_client():
     # print(f"Sending lobbies to: {clients_connected}")
     for client in clients_connected.values():
         if client.lobby_in is None:
-            server.send(client, Messages.LobbyListMessage([lobby.get_lobby_data() for lobby in lobbies.values()]))
+            lobbies_to_send = [lobby.get_lobby_data() for lobby in lobbies.values() if not lobby.private]
+            server.send(client, Messages.LobbyListMessage(lobbies_to_send))
 
 def listen_to_client(client: ConnectedClient):
     while True:
@@ -125,7 +126,7 @@ def listen_to_client(client: ConnectedClient):
 
         elif message.type == Messages.CreateLobbyMessage.type:
             client.username = message.username
-            new_lobby = Lobby(client)
+            new_lobby = Lobby(client, message.lobby_title, message.private)
             lobbies[new_lobby.lobby_id] = client.lobby_in = new_lobby
             send_lobbies_to_each_client()
 
@@ -150,6 +151,19 @@ def listen_to_client(client: ConnectedClient):
         elif message.type == Messages.LeaveLobbyMessage.type:
             client.lobby_in.remove_player(client)
             client.lobby_in = None
+
+        elif message.type == Messages.ChangeLobbySettingsMessage.type:
+            should_send_lobbies = False
+            if message.lobby_title != message.unchanged:
+                client.lobby_in.title = message.lobby_title
+                should_send_lobbies = True
+
+            if message.private != message.unchanged:
+                client.lobby_in.private = message.private
+                should_send_lobbies = True
+
+            if should_send_lobbies:
+                send_lobbies_to_each_client()
 
     print(f"Disconnected from {client.address}")
 

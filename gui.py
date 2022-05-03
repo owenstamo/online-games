@@ -727,7 +727,8 @@ class Gui:
 
         def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), text: str = "", valid_chars=WHOLE_KEYBOARD,
                      empty_text: str = "", max_text_length: Union[int, None] = None, horizontal_align="LEFT",
-                     cursor_width_multiplier: float = 1, cursor_blink_secs: float = 0.75, **kwargs):
+                     cursor_width_multiplier: float = 1, cursor_blink_secs: float = 0.75,
+                     on_deselect: Union[Sequence[Callable], Callable, None] = None, **kwargs):
             Gui.Rect.__init__(self, pos, **kwargs)
 
             horizontal_align = horizontal_align.upper()
@@ -737,6 +738,8 @@ class Gui:
             self.max_text_length = math.inf if max_text_length is None else max_text_length
             self.has_been_selected_yet = False
             self.empty_text = empty_text
+
+            self.on_deselect = get_list_of_input(on_deselect)
 
             # Number to be multiplied by this element's text's height to find its left and right padding
             self.text_padding_scalar = 0.25
@@ -785,6 +788,8 @@ class Gui:
                 self.is_selected = False
                 if self.text_element.text == "":
                     self.reset_text()
+                for on_deselect_func in self.on_deselect:
+                    on_deselect_func(self)
 
         def reset_cursor(self):
             self.cursor_last_toggle = time.perf_counter()
@@ -878,15 +883,15 @@ def get_auto_font_size_function(element_under: Union[Gui.GuiElement, None] = Non
                                 constant_size: float = 0,
                                 size_scaled_by_parent_width: float = 0,
                                 size_scaled_by_parent_height: float = 0):
-    def auto_center(element: Gui.Text, _):
+    def auto_font_size(element: Gui.Text, _):
         bounding_box = element_under.bounding_box if element_under else element.parent.bounding_box
         if not bounding_box:
             bounding_box = Gui.BoundingBox(Vert(0, 0), Vert(0, 0))
-        element.font_size = int(constant_size + \
-                                bounding_box.size.x * size_scaled_by_parent_width + \
+        element.font_size = int(constant_size +
+                                bounding_box.size.x * size_scaled_by_parent_width +
                                 bounding_box.size.y * size_scaled_by_parent_height)
 
-    return auto_center
+    return auto_font_size
 
 
 class InputHandler:
@@ -1143,13 +1148,16 @@ class GuiKeyboardEventHandler(KeyboardEventHandler):
         self.p_guis = self.guis
 
     def set_element_selected(self, element_clicked, button):
+        """
+        If the element being selected is a TextInput, set self.element_selected to that element. If the element isn't
+        a text input or isn't under any guis in self.guis, then deselect the currently selected TextInput.
+        """
         if isinstance(element_clicked, Gui.TextInput) and \
                 any([element_clicked.is_contained_under(gui) for gui in self.guis]):
             self.element_selected = element_clicked
             element_clicked.set_selected(True, button)
-        else:
-            if self.element_selected:
-                self.element_selected.set_selected(False, button)
+        elif self.element_selected:
+            self.element_selected.set_selected(False, button)
             self.element_selected = None
 
     def main_gui(self):
