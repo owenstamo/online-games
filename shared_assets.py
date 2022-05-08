@@ -142,7 +142,6 @@ class GameIds:
     snake = "snake"
     pong = "pong"
 
-
 game_info = {
     None: GameInfo("No Game Selected", "*insert_blank_image_here*"),
     GameIds.snake: GameInfo("Snake", "*insert_snake_image_here*"),
