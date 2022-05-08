@@ -392,6 +392,7 @@ class Menus:
             self.lobby_info = Gui.Rect(col=(245,) * 3)
 
             self.button_list = []
+            # TODO: Turn refresh button into show_full button
             for title in ["Join Lobby", "Refresh", "Create Lobby"]:
                 self.button_list.append(new_button := Gui.Rect(col=self.button_default_color, **self.element_mouse_functions))
                 new_button.add_element(Gui.Text(title, **self.new_text_parameters))
