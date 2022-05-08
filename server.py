@@ -47,7 +47,7 @@ class Lobby:
         parameters = {
             "lobby_id": self.lobby_id,
             "lobby_title": self.title,
-            "host": self.host_client.username,
+            "host": (self.host_client.username, self.host_client.client_id),
             "players": [(client.username, client.client_id) for client in self.player_clients],
             "game_id": self.game_id,
             "max_players": self.max_players

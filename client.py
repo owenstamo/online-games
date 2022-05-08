@@ -100,6 +100,7 @@ class Menus:
             def element_on_mouse_up(element, *_):
                 global canvas_active
 
+                # TODO: Should implement this in other menus. Also, use element.mouse_is_over instead
                 if element is not mouse_event_handler.element_over:  # or Menus.menu_active is not self:
                     # Commented out code makes sure that if the user switches guis while holding the element, it will ignore that
                     # element's on_mouse_up. Unnecessary since checking if the mouse is over the element automatically handles this.
@@ -298,7 +299,11 @@ class Menus:
                 if value == self._lobby_info.host:
                     return
                 self._lobby_info.host = value
-                self.host_element.text = value
+                self.host_element.text = value[0]
+
+            @property
+            def host_name(self):
+                return self._lobby_info.host[0]
 
             @property
             def game_id(self):
@@ -439,7 +444,7 @@ class Menus:
 
         def set_lobby_info(self, lobby: ConnectedLobby):
             self.lobby_title.text = lobby.lobby_title
-            self.host.text = f"Host: {lobby.host}"
+            self.host.text = f"Host: {lobby.host_name}"
             self.game_title.text = f"Game: {game_info[lobby.game_id].title}"
             self.player_list_title.text = f"Players: " + (f"{lobby.player_count}/{lobby.max_players}" if
                                                           lobby.max_players is not None else f"{lobby.player_count}")
@@ -638,11 +643,13 @@ class Menus:
             PLAYER_LIST_ELEMENT_MOUSE_HOLDING_COLOR = (200,) * 3
             PLAYER_LIST_ELEMENT_SELECTED_COLOR = (220,) * 3
 
-            def __init__(self, name, status, client_id):
+            def __init__(self, name, status, client_id, parent_menu):
                 self._name = name
                 self._status = status
                 self.client_id = client_id
-                self.list_gui_element = Gui.Rect(col=self.PLAYER_LIST_ELEMENT_DEFAULT_COLOR)
+
+                self.list_gui_element = Gui.Rect(col=self.PLAYER_LIST_ELEMENT_DEFAULT_COLOR,
+                                                 **parent_menu.element_mouse_functions)
 
                 before_draw_funcs = [
                     get_auto_center_function(align=["TOP", "LEFT"], offset_scaled_by_parent_height=Vert(0.1, 0.1)),
@@ -652,6 +659,13 @@ class Menus:
                     Gui.Text(self._name, text_align=["TOP", "LEFT"], on_draw_before=before_draw_funcs[0]),
                     Gui.Text(self._status, text_align=["BOTTOM", "RIGHT"], on_draw_before=before_draw_funcs[1])
                 ])
+
+            def set_selected(self, selected: bool):
+                if selected:
+                    self.list_gui_element.col = Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_SELECTED_COLOR
+                else:
+                    self.list_gui_element.col = Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR if \
+                        self.list_gui_element.mouse_is_over else Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_DEFAULT_COLOR
 
             @property
             def name(self):
@@ -676,22 +690,32 @@ class Menus:
             def element_on_mouse_over(element):
                 if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
                     return
+                is_player_list_element = element in self.player_list_container.contents
 
                 mouse_over_color = self.button_mouse_over_color
                 if isinstance(element, Gui.TextInput):
                     mouse_over_color = self.text_input_mouse_over_color
+                elif is_player_list_element:
+                    mouse_over_color = Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR
 
+                if is_player_list_element and self.player_selected and element is self.player_selected.list_gui_element:
+                    return
                 if not any(element.mouse_buttons_holding):
                     element.col = mouse_over_color
 
             def element_on_mouse_not_over(element):
                 if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
                     return
+                is_player_list_element = element in self.player_list_container.contents
 
                 mouse_default_color = self.button_default_color
                 if isinstance(element, Gui.TextInput):
                     mouse_default_color = self.text_input_default_color
+                elif is_player_list_element:
+                    mouse_default_color = Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_DEFAULT_COLOR
 
+                if is_player_list_element and self.player_selected and element is self.player_selected.list_gui_element:
+                    return
                 if not any(element.mouse_buttons_holding):
                     element.col = mouse_default_color
 
@@ -702,16 +726,24 @@ class Menus:
                 mouse_holding_color = self.button_mouse_holding_color
                 if isinstance(element, Gui.TextInput):
                     mouse_holding_color = self.text_input_mouse_holding_color
+                elif element in self.player_list_container.contents:
+                    mouse_holding_color = Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_MOUSE_HOLDING_COLOR
 
                 element.col = mouse_holding_color
 
             def element_on_mouse_up(element, *_):
                 if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
                     return
+                is_player_list_element = element in self.player_list_container.contents
 
                 default_and_mouse_over_colors = [self.button_default_color, self.button_mouse_over_color]
                 if isinstance(element, Gui.TextInput):
                     default_and_mouse_over_colors = [self.text_input_default_color, self.text_input_mouse_over_color]
+                elif is_player_list_element:
+                    default_and_mouse_over_colors = [
+                        Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_DEFAULT_COLOR,
+                        Menus.HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR
+                    ]
 
                 self.reset_button_color(element, *default_and_mouse_over_colors)
 
@@ -723,6 +755,12 @@ class Menus:
                 elif element is self.toggle_private_button:
                     self.private = not self.private
                     network.send(Messages.ChangeLobbySettingsMessage(private=self.private))
+                    self.player_selected = None
+                elif is_player_list_element:
+                    for player, list_element in zip(self.player_list, self.player_list_container.contents):
+                        if element is list_element:
+                            self.player_selected = player
+                            break
 
             def on_text_input_deselect(*_):
                 network.send(Messages.ChangeLobbySettingsMessage(lobby_title=self.lobby_title.text))
@@ -749,13 +787,13 @@ class Menus:
                 Gui.Text("Select Game", **self.new_text_parameters))
 
             self.kick_player_button, self.promote_player_button = [
-                Gui.Rect(col=self.button_default_color, **self.element_mouse_functions),
-                Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
+                Gui.Rect(col=self.button_grayed_out_color, **self.element_mouse_functions),
+                Gui.Rect(col=self.button_grayed_out_color, **self.element_mouse_functions)
             ]
             self.kick_player_button_text = self.kick_player_button.add_element(
-                Gui.Text("Kick Player", **self.new_text_parameters))
+                Gui.Text("Kick Player", col=self.text_grayed_out_color, **self.new_text_parameters))
             self.promote_player_button_text = self.promote_player_button.add_element(
-                Gui.Text("Promote Player", **self.new_text_parameters))
+                Gui.Text("Promote Player", col=self.text_grayed_out_color, **self.new_text_parameters))
 
             self.game_start_button = Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
             self.game_start_button_text = self.game_start_button.add_element(
@@ -776,6 +814,7 @@ class Menus:
                                   self.leave_button, self.toggle_private_button, self.toggle_chat_button])
             # endregion
 
+            self._player_selected: Union[Menus.HostLobbyRoom.ConnectedPlayer, None] = None
             self.player_selected = None
             self.private = False
 
@@ -788,6 +827,7 @@ class Menus:
                 self.private = lobby_info.private
             if self.lobby_title.text != lobby_info.lobby_title:
                 self.lobby_title.text = lobby_info.lobby_title
+            self._host_id = lobby_info.host[1]
             self.set_player_list(lobby_info.players)
 
         def set_player_list(self, value: list[tuple[str, int]]):
@@ -812,7 +852,7 @@ class Menus:
                     if player[1] not in connected_players_by_id:
                         status = "Host" if player[1] == self._host_id else "Member"
                         self.player_list.append(new_player := Menus.HostLobbyRoom.ConnectedPlayer(
-                            player[0], status, player[1]))
+                            player[0], status, player[1], self))
                         self.player_list_container.add_element(new_player.list_gui_element)
 
             for client_id, player_name in incoming_player_names_by_id.items():
@@ -821,6 +861,7 @@ class Menus:
                     if corresponding_player.name != player_name:
                         corresponding_player.name = player_name
                     status = "Host" if client_id == self._host_id else "Member"
+                    # TODO: Make sure this is working:
                     if corresponding_player.status != status:
                         corresponding_player.status = status
 
@@ -844,14 +885,18 @@ class Menus:
 
         @player_selected.setter
         def player_selected(self, value):
+            if self._player_selected:
+                self._player_selected.set_selected(False)
             self._player_selected = value
-            if value is None:
-                self.promote_player_button.col = self.kick_player_button.col = self.button_grayed_out_color
-                self.promote_player_button_text.col = self.kick_player_button_text.col = self.text_grayed_out_color
-            else:
+
+            if self._player_selected:
+                self._player_selected.set_selected(True)
                 self.reset_button_color(self.promote_player_button)
                 self.reset_button_color(self.kick_player_button)
                 self.promote_player_button_text.col = self.kick_player_button_text.col = (0,) * 3
+            else:
+                self.promote_player_button.col = self.kick_player_button.col = self.button_grayed_out_color
+                self.promote_player_button_text.col = self.kick_player_button_text.col = self.text_grayed_out_color
 
         def resize_player_list_elements(self):
             if len(self.player_list) == 0:
@@ -862,7 +907,7 @@ class Menus:
             for i, player in enumerate(self.player_list):
 
                 player.list_gui_element.pos = Vert(0, i * element_height)
-                player.list_gui_element.size = Vert(self.player_list_container.size.x, element_height)
+                player.list_gui_element.size = Vert(self.player_list_container.size.x, element_height + 2)
 
                 # font_size * size_per_font_size = element width/2 => font_size = element_width/2 / size_per_font_size
 
