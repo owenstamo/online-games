@@ -683,6 +683,7 @@ class Menus:
             @status.setter
             def status(self, value):
                 self._status = value
+                self.status_text_element.text = value
 
         def __init__(self):
             super().__init__()
@@ -756,6 +757,9 @@ class Menus:
                     self.private = not self.private
                     network.send(Messages.ChangeLobbySettingsMessage(private=self.private))
                     self.player_selected = None
+                elif element is self.promote_player_button:
+                    # TODO: If player is already host, don't send
+                    network.send(Messages.ChangeLobbySettingsMessage(host_id=self.player_selected.client_id))
                 elif is_player_list_element:
                     for player, list_element in zip(self.player_list, self.player_list_container.contents):
                         if element is list_element:
@@ -828,6 +832,7 @@ class Menus:
             if self.lobby_title.text != lobby_info.lobby_title:
                 self.lobby_title.text = lobby_info.lobby_title
             self._host_id = lobby_info.host[1]
+            print(self._host_id)
             self.set_player_list(lobby_info.players)
 
         def set_player_list(self, value: list[tuple[str, int]]):
@@ -864,6 +869,7 @@ class Menus:
                     # TODO: Make sure this is working:
                     if corresponding_player.status != status:
                         corresponding_player.status = status
+                    print(client_id, player_name, status)
 
             self.resize_player_list_elements()
 

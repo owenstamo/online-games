@@ -13,18 +13,46 @@ class Lobby:
         self.lobby_id = Lobby.available_lobby_id
         Lobby.available_lobby_id += 1
 
-        self.title: str = title
+        self._title: str = title
 
-        self.host_client: ConnectedClient = host
+        self._host_client: ConnectedClient = host
         self.player_clients: list[ConnectedClient] = [host]
 
         self.game_id = None
         self.max_players = 2
 
-        self.private = private  # self.closed = True/False (the name may be more accurate)
+        self._private = private  # self.closed = True/False (the name may be more accurate)
         # self.password = None
 
-    # def change_host(self, new_host: ):
+    @property
+    def host_client(self):
+        return self._host_client
+
+    @host_client.setter
+    def host_client(self, value: ConnectedClient):
+        self._host_client = value
+        self.send_lobby_info_to_members()
+        send_lobbies_to_each_client()
+
+    @property
+    def private(self):
+        return self._private
+
+    @private.setter
+    def private(self, value: bool):
+        self._private = value
+        self.send_lobby_info_to_members()
+        send_lobbies_to_each_client()
+
+    @property
+    def title(self):
+        return self._title
+
+    @title.setter
+    def title(self, value):
+        self._title = value
+        self.send_lobby_info_to_members()
+        send_lobbies_to_each_client()
 
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
@@ -36,8 +64,8 @@ class Lobby:
             delete_lobby(self)
             return
 
-        if player is self.host_client:
-            self.host_client = self.player_clients[0]
+        if player is self._host_client:
+            self._host_client = self.player_clients[0]
             # TODO: Change client's gui here ^^
 
         self.send_lobby_info_to_members()
@@ -46,14 +74,14 @@ class Lobby:
     def get_lobby_info(self, include_in_lobby_info=True):
         parameters = {
             "lobby_id": self.lobby_id,
-            "lobby_title": self.title,
-            "host": (self.host_client.username, self.host_client.client_id),
+            "lobby_title": self._title,
+            "host": (self._host_client.username, self._host_client.client_id),
             "players": [(client.username, client.client_id) for client in self.player_clients],
             "game_id": self.game_id,
             "max_players": self.max_players
         }
         if include_in_lobby_info:
-            parameters["private"] = self.private
+            parameters["private"] = self._private
             parameters["game_settings"] = None
 
         return LobbyInfo(**parameters)
@@ -164,20 +192,14 @@ def listen_to_client(client: ConnectedClient):
             client.lobby_in = None
 
         elif message.type == Messages.ChangeLobbySettingsMessage.type:
-            should_send_lobby_list = False
-            should_send_lobby_info_to_members = False
             if message.lobby_title != message.unchanged:
                 client.lobby_in.title = message.lobby_title
-                should_send_lobby_list = should_send_lobby_info_to_members = True
 
             if message.private != message.unchanged:
                 client.lobby_in.private = message.private
-                should_send_lobby_list = should_send_lobby_info_to_members = True
 
-            if should_send_lobby_info_to_members:
-                client.lobby_in.send_lobby_info_to_members()
-            if should_send_lobby_list:
-                send_lobbies_to_each_client()
+            if message.host_id != message.unchanged:
+                client.lobby_in.host_client = clients_connected[message.host_id]
 
     print(f"Disconnected from {client.address}")
 

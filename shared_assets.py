@@ -113,9 +113,10 @@ class Messages:
         type = "change_lobby_settings"
         unchanged = "unchanged"
 
-        def __init__(self, lobby_title=unchanged, private: bool = unchanged):
+        def __init__(self, lobby_title=unchanged, private: bool = unchanged, host_id: int = unchanged):
             self.lobby_title = lobby_title
             self.private = private
+            self.host_id = host_id
 
     class LobbyInfoMessage(Message):
         type = "lobby_info"
