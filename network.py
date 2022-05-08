@@ -10,7 +10,7 @@ class Network:
         self.port = shared_assets.port
         self.address = (self.server, self.port)
 
-        self.connect()
+        self.client_id = self.connect()
 
     def connect(self):
         print("Connecting to server...")
@@ -22,7 +22,9 @@ class Network:
             except TimeoutError:
                 print("Could not find server, trying again...")
                 # When this happens
-        print(f"Connected with address {self.recv().address}!")
+        connected_message = self.recv()
+        print(f"Connected with address {connected_message.address} and client_id {connected_message.client_id}!")
+        return connected_message.client_id
 
     def send(self, message):
         outgoing_message = pickle.dumps(message)

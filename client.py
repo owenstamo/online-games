@@ -1,5 +1,5 @@
 import pygame
-from shared_assets import LobbyData, game_info, Messages
+from shared_assets import LobbyInfo, game_info, Messages
 from abc import ABC, abstractmethod
 from typing import Union
 import copy
@@ -26,7 +26,10 @@ def message_listener():
 
         if message.type == Messages.LobbyListMessage.type:
             if isinstance(Menus.menu_active, Menus.MultiplayerMenu):
-                InitializedMenus.multiplayer_menu.set_lobbies(message.lobbies)
+                Menus.menu_active.set_lobbies(message.lobbies)
+        if message.type == Messages.LobbyInfoMessage.type:
+            if isinstance(Menus.menu_active, Menus.HostLobbyRoom):
+                Menus.menu_active.set_lobby_info(message.lobby_info)
         if message.type == Messages.KickedFromLobbyMessage.type:
             Menus.set_active_menu(InitializedMenus.multiplayer_menu)
 
@@ -195,7 +198,7 @@ class Menus:
             LOBBY_LIST_ELEMENT_MOUSE_HOLDING_COLOR = (200,) * 3
             LOBBY_LIST_ELEMENT_SELECTED_COLOR = (220,) * 3
 
-            def __init__(self, lobby_data: LobbyData, parent_menu):
+            def __init__(self, lobby_info: LobbyInfo, parent_menu):
                 def on_mouse_over(element):
                     if self.parent_menu.selected_lobby is not self:
                         if not any(element.mouse_buttons_holding):
@@ -252,8 +255,8 @@ class Menus:
                     title, game_title, host, count
                 self.info_gui_element = Gui.BoundingContainer()
 
-                self._lobby_data: LobbyData = LobbyData(lobby_data.lobby_id)
-                self.lobby_data = lobby_data
+                self._lobby_info: LobbyInfo = LobbyInfo(lobby_info.lobby_id)
+                self.lobby_info = lobby_info
 
             def set_selected(self, selected: bool):
                 if selected:
@@ -262,11 +265,11 @@ class Menus:
                     self.list_gui_element.col = self.LOBBY_LIST_ELEMENT_DEFAULT_COLOR
 
             @property
-            def lobby_data(self):
-                return copy.copy(self._lobby_data)
+            def lobby_info(self):
+                return copy.copy(self._lobby_info)
 
-            @lobby_data.setter
-            def lobby_data(self, value):
+            @lobby_info.setter
+            def lobby_info(self, value: LobbyInfo):
                 if value.lobby_id != self.lobby_id and self.lobby_id is not None:
                     raise ValueError("Tried to set lobby to another without a matching ID")
                 self.lobby_title = value.lobby_title
@@ -277,42 +280,42 @@ class Menus:
 
             @property
             def lobby_title(self):
-                return self._lobby_data.lobby_title
+                return self._lobby_info.lobby_title
 
             @lobby_title.setter
             def lobby_title(self, value):
-                if value == self._lobby_data.lobby_title:
+                if value == self._lobby_info.lobby_title:
                     return
-                self._lobby_data.lobby_title = value
+                self._lobby_info.lobby_title = value
                 self.title_element.text = value
 
             @property
             def host(self):
-                return self._lobby_data.host
+                return self._lobby_info.host
 
             @host.setter
             def host(self, value):
-                if value == self._lobby_data.host:
+                if value == self._lobby_info.host:
                     return
-                self._lobby_data.host = value
+                self._lobby_info.host = value
                 self.host_element.text = value
 
             @property
             def game_id(self):
-                return self._lobby_data.game_id
+                return self._lobby_info.game_id
 
             @game_id.setter
             def game_id(self, value):
-                if value == self._lobby_data.game_id and self.game_title_element.text == game_info[value].title:
+                if value == self._lobby_info.game_id and self.game_title_element.text == game_info[value].title:
                     return
-                self._lobby_data.game_id = value
+                self._lobby_info.game_id = value
 
                 # TODO: self.game_image = game_info[value.game_id].image
                 self.game_title_element.text = game_info[value].title
 
             @property
             def player_count(self):
-                return len(self._lobby_data.players)
+                return len(self._lobby_info.players)
 
             @player_count.setter
             def player_count(self, value):
@@ -321,31 +324,35 @@ class Menus:
 
             @property
             def players(self):
-                return self._lobby_data.players
+                return self._lobby_info.players
 
             @players.setter
             def players(self, value):
-                if value == self._lobby_data.players:
+                if value == self._lobby_info.players:
                     return
-                self._lobby_data.players = value
+                self._lobby_info.players = value
         #         TODO: Set players element here.
                 self.player_count = len(value)
 
             @property
+            def player_names(self):
+                return [player_info[0] for player_info in self._lobby_info.players]
+
+            @property
             def max_players(self):
-                return self._lobby_data.max_players
+                return self._lobby_info.max_players
 
             @max_players.setter
             def max_players(self, value):
-                if value == self._lobby_data.max_players:
+                if value == self._lobby_info.max_players:
                     return
-                self._lobby_data.max_players = value
+                self._lobby_info.max_players = value
                 self.player_count_element.text = f"{self.player_count}/{value}" \
                     if self.max_players is not None else f"{self.player_count}"
 
             @property
             def lobby_id(self):
-                return self._lobby_data.lobby_id
+                return self._lobby_info.lobby_id
 
         def __init__(self):
             super().__init__()
@@ -362,10 +369,13 @@ class Menus:
                     InitializedMenus.lobby_room_menu = Menus.HostLobbyRoom()
                     Menus.set_active_menu(InitializedMenus.lobby_room_menu)
                     network.send(Messages.CreateLobbyMessage(username, default_lobby_title))
+                    self.selected_lobby = None
                 elif element is self.join_lobby_button:
                     if self.selected_lobby and self.selected_lobby.player_count < self.selected_lobby.max_players:
+                        InitializedMenus.lobby_room_menu = Menus.HostLobbyRoom()
                         Menus.set_active_menu(InitializedMenus.lobby_room_menu)
                         network.send(Messages.JoinLobbyMessage(self.selected_lobby.lobby_id, username))
+                        self.selected_lobby = None
 
             self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
@@ -434,10 +444,10 @@ class Menus:
             self.player_list_title.text = f"Players: " + (f"{lobby.player_count}/{lobby.max_players}" if
                                                           lobby.max_players is not None else f"{lobby.player_count}")
 
-            if self.raw_player_list_displayed != lobby.players:
-                self.raw_player_list_displayed = lobby.players
+            if self.raw_player_list_displayed != lobby.player_names:
+                self.raw_player_list_displayed = lobby.player_names
                 self.player_list = [[], []]
-                for i, player_name in enumerate(lobby.players):
+                for i, player_name in enumerate(lobby.player_names):
                     self.player_list[i % 2].append((Gui.Text(player_name, text_align=["LEFT", "CENTER"]),
                                                     Gui.Circle(no_fill=True)))
                 self.player_list_container.contents = sum(self.player_list[0] + self.player_list[1], start=())
@@ -462,21 +472,24 @@ class Menus:
             else:
                 self.lobby_info_inside_wrapper.active = False
 
-        def set_lobbies(self, lobbies: list[LobbyData]):
+        def set_lobbies(self, lobbies: list[LobbyInfo]):
             connected_lobbies_by_id = {lobby.lobby_id: lobby for lobby in self.connected_lobbies}
             incoming_lobbies_by_id = {lobby.lobby_id: lobby for lobby in lobbies}
 
             if set(connected_lobbies_by_id) != set(incoming_lobbies_by_id):
+                # Remove any connected players that aren't in the list of incoming players
                 for i in range(len(self.connected_lobbies) - 1, -1, -1):
                     lobby = self.connected_lobbies[i]
                     if lobby.lobby_id not in incoming_lobbies_by_id:
                         self.lobby_list_background.remove_element(lobby.list_gui_element)
+                        # TODO: Check if commenting this next line doesn't break everything
                         self.resize_lobby_list_elements()
 
                         if lobby is self.selected_lobby:
                             self.selected_lobby = None
                         del self.connected_lobbies[i]
 
+                # Add any new players that are in the list of incoming players but not already connected
                 for i, lobby in enumerate(lobbies):
                     if lobby.lobby_id not in connected_lobbies_by_id:
                         self.connected_lobbies.append(new_lobby := Menus.MultiplayerMenu.ConnectedLobby(lobby, self))
@@ -485,7 +498,7 @@ class Menus:
             for lobby_id, lobby in incoming_lobbies_by_id.items():
                 if lobby_id in connected_lobbies_by_id:
                     corresponding_lobby = connected_lobbies_by_id[lobby_id]
-                    corresponding_lobby.lobby_data = lobby
+                    corresponding_lobby.lobby_info = lobby
 
             if self._selected_lobby:
                 self.set_lobby_info(self._selected_lobby)
@@ -619,6 +632,44 @@ class Menus:
         button_grayed_out_color = (230,) * 3
         text_grayed_out_color = (100,) * 3
 
+        class ConnectedPlayer:
+            PLAYER_LIST_ELEMENT_DEFAULT_COLOR = (240,) * 3
+            PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR = (230,) * 3
+            PLAYER_LIST_ELEMENT_MOUSE_HOLDING_COLOR = (200,) * 3
+            PLAYER_LIST_ELEMENT_SELECTED_COLOR = (220,) * 3
+
+            def __init__(self, name, status, client_id):
+                self._name = name
+                self._status = status
+                self.client_id = client_id
+                self.list_gui_element = Gui.Rect(col=self.PLAYER_LIST_ELEMENT_DEFAULT_COLOR)
+
+                before_draw_funcs = [
+                    get_auto_center_function(align=["TOP", "LEFT"], offset_scaled_by_parent_height=Vert(0.1, 0.1)),
+                    get_auto_center_function(align=["BOTTOM", "RIGHT"], offset_scaled_by_parent_height=Vert(-0.1, -0.1))
+                ]
+                self.name_text_element, self.status_text_element = self.list_gui_element.add_element([
+                    Gui.Text(self._name, text_align=["TOP", "LEFT"], on_draw_before=before_draw_funcs[0]),
+                    Gui.Text(self._status, text_align=["BOTTOM", "RIGHT"], on_draw_before=before_draw_funcs[1])
+                ])
+
+            @property
+            def name(self):
+                return self._name
+
+            @name.setter
+            def name(self, value):
+                self._name = value
+                self.name_text_element.text = value
+
+            @property
+            def status(self):
+                return self._status
+
+            @status.setter
+            def status(self, value):
+                self._status = value
+
         def __init__(self):
             super().__init__()
 
@@ -683,11 +734,6 @@ class Menus:
                 "on_mouse_not_over": [element_on_mouse_not_over]
             }
 
-            self.player_name_list = [
-                ("Username", "Member"),
-                ("Username", "Owner")
-            ]
-
             # region Initialize gui elements
             self.lobby_title = Gui.TextInput(text=default_lobby_title, valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
                                              max_text_length=max_lobby_name_length, on_deselect=on_text_input_deselect,
@@ -733,6 +779,53 @@ class Menus:
             self.player_selected = None
             self.private = False
 
+            self._host_id: Union[int, None] = network.client_id
+            self.player_list: list[Menus.HostLobbyRoom.ConnectedPlayer] = []
+            self.set_player_list([(username, network.client_id)])
+
+        def set_lobby_info(self, lobby_info: LobbyInfo):
+            if self.private != lobby_info.private:
+                self.private = lobby_info.private
+            if self.lobby_title.text != lobby_info.lobby_title:
+                self.lobby_title.text = lobby_info.lobby_title
+            self.set_player_list(lobby_info.players)
+
+        def set_player_list(self, value: list[tuple[str, int]]):
+            incoming_player_names_by_id = {player[1]: player[0] for player in value}
+            connected_players_by_id = {player.client_id: player for player in self.player_list}
+
+            if set(connected_players_by_id) != set(incoming_player_names_by_id):
+                # Remove any connected players that aren't in the list of incoming players
+                for i in range(len(self.player_list) - 1, -1, -1):
+                    player = self.player_list[i]
+                    if player.client_id not in incoming_player_names_by_id:
+                        self.player_list_container.remove_element(player.list_gui_element)
+                        # TODO: Check if commenting the next line as well doesnt break everything
+                        self.resize_player_list_elements()
+
+                        if player is self.player_selected:
+                            self.player_selected = None
+                        del self.player_list[i]
+
+                # Add any new players that are in the list of incoming players but not already connected
+                for i, player in enumerate(value):
+                    if player[1] not in connected_players_by_id:
+                        status = "Host" if player[1] == self._host_id else "Member"
+                        self.player_list.append(new_player := Menus.HostLobbyRoom.ConnectedPlayer(
+                            player[0], status, player[1]))
+                        self.player_list_container.add_element(new_player.list_gui_element)
+
+            for client_id, player_name in incoming_player_names_by_id.items():
+                if client_id in connected_players_by_id:
+                    corresponding_player = connected_players_by_id[client_id]
+                    if corresponding_player.name != player_name:
+                        corresponding_player.name = player_name
+                    status = "Host" if client_id == self._host_id else "Member"
+                    if corresponding_player.status != status:
+                        corresponding_player.status = status
+
+            self.resize_player_list_elements()
+
         @property
         def private(self):
             return self._private
@@ -759,6 +852,28 @@ class Menus:
                 self.reset_button_color(self.promote_player_button)
                 self.reset_button_color(self.kick_player_button)
                 self.promote_player_button_text.col = self.kick_player_button_text.col = (0,) * 3
+
+        def resize_player_list_elements(self):
+            if len(self.player_list) == 0:
+                return
+            element_height = min(self.player_list_container.size.y / len(self.player_list),
+                                 self.player_list_container.size.x * 0.2)
+
+            for i, player in enumerate(self.player_list):
+
+                player.list_gui_element.pos = Vert(0, i * element_height)
+                player.list_gui_element.size = Vert(self.player_list_container.size.x, element_height)
+
+                # font_size * size_per_font_size = element width/2 => font_size = element_width/2 / size_per_font_size
+
+                if player.name_text_element.text:
+                    player.name_text_element.font_size = \
+                        min(player.list_gui_element.size.x * 0.75 / player.name_text_element.size_per_font_size.x,
+                            player.list_gui_element.size.y * 0.5 / player.name_text_element.size_per_font_size.y)
+                if player.status_text_element.text:
+                    player.status_text_element.font_size = \
+                        min(player.list_gui_element.size.x * 0.45 / player.status_text_element.size_per_font_size.x,
+                            player.list_gui_element.size.y * 0.3 / player.status_text_element.size_per_font_size.y)
 
         def resize_elements(self):
             # TODO: Resizing everything individually can be laggy as heck (recalculating bounding boxes every time)
@@ -789,7 +904,7 @@ class Menus:
 
             self.leave_button.pos = Vert(padding.x, canvas_size.y - padding.y - button_size.y)
             self.toggle_private_button.pos = Vert(self.leave_button.pos.x + button_size.x * button_sizes[0].x,
-                                                canvas_size.y - padding.y - button_size.y)
+                                                  canvas_size.y - padding.y - button_size.y)
             self.toggle_chat_button.pos = Vert(self.toggle_private_button.pos.x + button_size.x * button_sizes[1].x,
                                                canvas_size.y - padding.y - button_size.y)
 
@@ -818,6 +933,8 @@ class Menus:
 
             self.kick_player_button_text.font_size = base_button_height * 0.75 * 0.75 * min(canvas_scale.x * 0.7, canvas_scale.y)
             self.promote_player_button_text.font_size = base_button_height * 0.75 * 0.75 * min(canvas_scale.x * 0.6, canvas_scale.y)
+
+            self.resize_player_list_elements()
 
     @classmethod
     def set_active_menu(cls, value):

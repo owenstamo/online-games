@@ -2,7 +2,7 @@ from __future__ import annotations
 import socket
 import _thread
 import pickle
-from shared_assets import Messages, port, LobbyData
+from shared_assets import Messages, port, LobbyInfo
 
 lobbies: dict[str: Lobby] = {}
 
@@ -40,17 +40,27 @@ class Lobby:
             self.host_client = self.player_clients[0]
             # TODO: Change client's gui here ^^
 
+        self.send_lobby_info_to_members()
         send_lobbies_to_each_client()
 
-    def get_lobby_data(self):
-        return LobbyData(
-            self.lobby_id,
-            self.title,
-            self.host_client.username,
-            [client.username for client in self.player_clients],
-            self.game_id,
-            self.max_players
-        )
+    def get_lobby_info(self, include_in_lobby_info=True):
+        parameters = {
+            "lobby_id": self.lobby_id,
+            "lobby_title": self.title,
+            "host": self.host_client.username,
+            "players": [(client.username, client.client_id) for client in self.player_clients],
+            "game_id": self.game_id,
+            "max_players": self.max_players
+        }
+        if include_in_lobby_info:
+            parameters["private"] = self.private
+            parameters["game_settings"] = None
+
+        return LobbyInfo(**parameters)
+
+    def send_lobby_info_to_members(self):
+        for member in self.player_clients:
+            server.send(member, Messages.LobbyInfoMessage(self.get_lobby_info(True)))
 
 class ConnectedClient:
     def __init__(self, client_id, conn, address, username=None):
@@ -110,7 +120,7 @@ def send_lobbies_to_each_client():
     # print(f"Sending lobbies to: {clients_connected}")
     for client in clients_connected.values():
         if client.lobby_in is None:
-            lobbies_to_send = [lobby.get_lobby_data() for lobby in lobbies.values() if not lobby.private]
+            lobbies_to_send = [lobby.get_lobby_info(False) for lobby in lobbies.values() if not lobby.private]
             server.send(client, Messages.LobbyListMessage(lobbies_to_send))
 
 def listen_to_client(client: ConnectedClient):
@@ -122,7 +132,7 @@ def listen_to_client(client: ConnectedClient):
             break
 
         if message.type == Messages.LobbyListRequest.type:
-            server.send(client, Messages.LobbyListMessage([lobby.get_lobby_data() for lobby in lobbies.values()]))
+            server.send(client, Messages.LobbyListMessage([lobby.get_lobby_info(False) for lobby in lobbies.values()]))
 
         elif message.type == Messages.CreateLobbyMessage.type:
             client.username = message.username
@@ -140,10 +150,11 @@ def listen_to_client(client: ConnectedClient):
             #         len(lobbies[message.lobby_id].player_clients) > lobbies[message.lobby_id].max_players:
             #     server.send(client, Messages.CannotJoinLobbyMessage("Lobby is full."))
             # else:
+            client.lobby_in = lobby = lobbies[message.lobby_id]
             client.username = message.username
-            lobbies[message.lobby_id].player_clients.append(client)
-            client.lobby_in = lobbies[message.lobby_id]
+            lobby.player_clients.append(client)
             send_lobbies_to_each_client()
+            lobby.send_lobby_info_to_members()
 
         elif message.type == Messages.DisconnectMessage.type:
             break
@@ -153,16 +164,19 @@ def listen_to_client(client: ConnectedClient):
             client.lobby_in = None
 
         elif message.type == Messages.ChangeLobbySettingsMessage.type:
-            should_send_lobbies = False
+            should_send_lobby_list = False
+            should_send_lobby_info_to_members = False
             if message.lobby_title != message.unchanged:
                 client.lobby_in.title = message.lobby_title
-                should_send_lobbies = True
+                should_send_lobby_list = should_send_lobby_info_to_members = True
 
             if message.private != message.unchanged:
                 client.lobby_in.private = message.private
-                should_send_lobbies = True
+                should_send_lobby_list = should_send_lobby_info_to_members = True
 
-            if should_send_lobbies:
+            if should_send_lobby_info_to_members:
+                client.lobby_in.send_lobby_info_to_members()
+            if should_send_lobby_list:
                 send_lobbies_to_each_client()
 
     print(f"Disconnected from {client.address}")
@@ -189,7 +203,7 @@ def listen_for_clients():
             client_id += 1
         clients_connected[client_id] = client = ConnectedClient(client_id, conn, address)
 
-        server.send(client, Messages.ConnectedMessage(address))
+        server.send(client, Messages.ConnectedMessage(address, client_id))
 
         _thread.start_new_thread(listen_to_client, (client,))
 

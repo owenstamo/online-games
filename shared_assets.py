@@ -26,21 +26,27 @@ class Lobby:
     def add_player(self, player):
         self.players += [player]
 
-class LobbyData:
+class LobbyInfo:
     def __init__(self, lobby_id: int,
                  lobby_title: Union[str, None] = None,
-                 host: Union[str, None] = None,
-                 players: Union[list[str], None] = None,
+                 host: Union[tuple[str, int], None] = None,
+                 players: Union[list[tuple[str, int]], None] = None,
                  game_id=None,
-                 max_players: Union[int, None] = None):
+                 max_players: Union[int, None] = None,
+                 private: Union[int, None] = None,
+                 game_settings=None):
         self.lobby_id = lobby_id
         self.lobby_title = lobby_title
         self.host = host
         self.game_id = game_id
         self.players = players
         self.max_players = max_players
+        self.private = private
+        self.game_settings = game_settings
 
 class Messages:
+    # TODO: I'm overwriting the type() function
+
     class Message:
         style = "message"
         type = "default_message"
@@ -52,8 +58,9 @@ class Messages:
     class ConnectedMessage(Message):
         type = "connected"
 
-        def __init__(self, address):
+        def __init__(self, address, client_id):
             self.address = address
+            self.client_id = client_id
 
     class DisconnectMessage(Message):
         type = "disconnect"
@@ -63,12 +70,12 @@ class Messages:
 
     # region Multiplayer menu related messages
     class LobbyListRequest(Request):
-        type = "lobby_list_data_request"
+        type = "lobby_list_info_request"
 
     class LobbyListMessage(Message):
-        type = "lobby_list_data"
+        type = "lobby_list_info"
 
-        def __init__(self, lobbies: list[LobbyData]):
+        def __init__(self, lobbies: list[LobbyInfo]):
             self.lobbies = lobbies
 
     class CreateLobbyMessage(Message):
@@ -109,6 +116,15 @@ class Messages:
         def __init__(self, lobby_title=unchanged, private: bool = unchanged):
             self.lobby_title = lobby_title
             self.private = private
+
+    class LobbyInfoMessage(Message):
+        type = "lobby_info"
+
+        def __init__(self, lobby_info: LobbyInfo):
+            self.lobby_info = lobby_info
+
+    # class InLobbyInfoRequest(Request):
+    #     type = "lobby_info_request"
 
     class ErrorMessage(Message):
         type = "error"
