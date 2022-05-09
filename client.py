@@ -1,7 +1,6 @@
 import pygame
 from shared_assets import LobbyInfo, game_info, Messages
 from abc import ABC, abstractmethod
-from typing import Union
 import copy
 from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboardEventHandler
 from network import Network
@@ -441,7 +440,7 @@ class Menus:
             # endregion
 
             self.connected_lobbies: list[Menus.MultiplayerMenu.ConnectedLobby] = []
-            self._selected_lobby: Union[Menus.MultiplayerMenu.ConnectedLobby, None] = None
+            self._selected_lobby: Menus.MultiplayerMenu.ConnectedLobby | None = None
 
         def set_lobby_info(self, lobby: ConnectedLobby):
             self.lobby_title.text = lobby.lobby_title
@@ -825,11 +824,11 @@ class Menus:
                                   self.leave_button, self.toggle_private_button, self.toggle_chat_button])
             # endregion
 
-            self._player_selected: Union[Menus.HostLobbyRoom.ConnectedPlayer, None] = None
+            self._player_selected: Menus.HostLobbyRoom.ConnectedPlayer | None = None
             self.player_selected = None
             self.private = False
 
-            self._host_id: Union[int, None] = network.client_id
+            self._host_id: int | None = network.client_id
             self.player_list: list[Menus.HostLobbyRoom.ConnectedPlayer] = []
             self.set_player_list([(username, network.client_id)])
             self.player_action_buttons_grayed = True
@@ -1008,7 +1007,7 @@ class Menus:
 
         cls.menu_active.resize_elements()
 
-    menu_active: Union[Menu, None] = None
+    menu_active: Menu | None = None
 
 class InitializedMenus:
     title_screen_menu = Menus.TitleScreenMenu()

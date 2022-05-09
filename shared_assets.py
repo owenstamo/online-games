@@ -1,5 +1,3 @@
-from typing import Union
-
 port = 5555
 
 class Player:
@@ -28,12 +26,12 @@ class Lobby:
 
 class LobbyInfo:
     def __init__(self, lobby_id: int,
-                 lobby_title: Union[str, None] = None,
-                 host: Union[tuple[str, int], None] = None,
-                 players: Union[list[tuple[str, int]], None] = None,
+                 lobby_title: str | None = None,
+                 host: tuple[str, int] | None = None,
+                 players: list[tuple[str, int]] | None = None,
                  game_id=None,
-                 max_players: Union[int, None] = None,
-                 private: Union[int, None] = None,
+                 max_players: int | None = None,
+                 private: int | None = None,
                  game_settings=None):
         self.lobby_id = lobby_id
         self.lobby_title = lobby_title
@@ -147,6 +145,7 @@ class GameInfo:
 class GameIds:
     snake = "snake"
     pong = "pong"
+
 
 game_info = {
     None: GameInfo("No Game Selected", "*insert_blank_image_here*"),

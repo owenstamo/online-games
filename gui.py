@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import time
 from utilities import ImmutableVert, Vert, Colors
-from typing import Sequence, Union, Tuple, Callable
+from typing import Sequence, Tuple, Callable
 import pygame
 import copy
 
@@ -36,7 +36,7 @@ def align_handler(text_align):
 
 class Gui:
     class BoundingBox:
-        def __init__(self, pos: Union[Vert, ImmutableVert] = Vert(0, 0), size: Union[Vert, ImmutableVert] = Vert(0, 0)):
+        def __init__(self, pos: Vert | ImmutableVert = Vert(0, 0), size: Vert | ImmutableVert = Vert(0, 0)):
             self.pos = pos
             self.size = size
 
@@ -78,8 +78,8 @@ class Gui:
     class GuiElement:
 
         def __init__(self, pos: ImmutableVert,
-                     on_draw_before: Union[Sequence[Callable], Callable, None] = None,
-                     on_draw_after: Union[Sequence[Callable], Callable, None] = None,
+                     on_draw_before: Sequence[Callable] | Callable | None = None,
+                     on_draw_after: Sequence[Callable] | Callable | None = None,
                      ignore_bounding_box: bool = False, ignored_by_mouse: bool = False, **_):
             """
             A base gui element to provides basic framework to child classes.
@@ -94,8 +94,8 @@ class Gui:
             self.on_draw_before: list[Callable] = get_list_of_input(on_draw_before)
 
             self.on_draw_after: list[Callable] = get_list_of_input(on_draw_after)
-            self.parent: Union[Gui.ContainerElement, None] = None
-            self.bounding_box: Union[Gui.BoundingBox, None] = None
+            self.parent: Gui.ContainerElement | None = None
+            self.bounding_box: Gui.BoundingBox | None = None
             self._ignore_bounding_box: bool = ignore_bounding_box
             self.ignored_by_mouse: bool = ignored_by_mouse
 
@@ -164,7 +164,7 @@ class Gui:
                 self.reevaluate_bounding_box()
 
         @property
-        def bounding_box_ignoring_children(self) -> Union[Gui.BoundingBox, None]:
+        def bounding_box_ignoring_children(self) -> Gui.BoundingBox | None:
             """
             Returns the visual bounding box of this element, ignoring all child elements. Will likely return None for any non-visual elements.
             """
@@ -190,8 +190,8 @@ class Gui:
 
     class ContainerElement(GuiElement):
         def __init__(self, pos: ImmutableVert = Vert(0, 0),
-                     contents: Union[Gui.GuiElement, Sequence[Gui.GuiElement], None]
-                     = None, active: bool = True, **kwargs):
+                     contents: Gui.GuiElement | Sequence[Gui.GuiElement] | None = None,
+                     active: bool = True, **kwargs):
             """
             A group that contains a list of Gui Elements. Can be disabled or moved, which affects all elements contained.
 
@@ -201,14 +201,14 @@ class Gui:
             """
             super().__init__(pos, **kwargs)
             self.active: bool = active
-            self.parent: Union[Gui.ContainerElement, None] = None
+            self.parent: Gui.ContainerElement | None = None
             # Bounding box is relative to position
-            self.bounding_box: Union[Gui.BoundingBox, None] = None
+            self.bounding_box: Gui.BoundingBox | None = None
 
             self._contents: list[Gui.GuiElement] = []
             self.contents = contents
 
-        def add_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]]):
+        def add_element(self, elements: Gui.GuiElement | Sequence[Gui.GuiElement]):
             orig_elements = [element for element in elements] if isinstance(elements, Sequence) else elements
             if isinstance(elements, Sequence):
                 for element in elements:
@@ -227,7 +227,7 @@ class Gui:
 
             return orig_elements
 
-        def remove_element(self, elements: Union[Gui.GuiElement, Sequence[Gui.GuiElement]],
+        def remove_element(self, elements: Gui.GuiElement | Sequence[Gui.GuiElement],
                            raise_error_if_not_found: bool = False):
             if isinstance(elements, Sequence):
                 for element in elements:
@@ -335,14 +335,14 @@ class Gui:
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class MouseInteractable:
-        def __init__(self, on_mouse_down: Union[Sequence[Callable], Callable, None] = None,
-                           on_mouse_up: Union[Sequence[Callable], Callable, None] = None,
-                           while_mouse_down: Union[Sequence[Callable], Callable, None] = None,
-                           on_mouse_over: Union[Sequence[Callable], Callable, None] = None,
-                           on_mouse_not_over: Union[Sequence[Callable], Callable, None] = None,
-                           while_mouse_over: Union[Sequence[Callable], Callable, None] = None,
-                           drag_parent: Union[Gui.GuiElement, None] = None,
-                           drag_boundary: Union[Gui.GuiElement, Gui.BoundingBox, None] = None, **_):
+        def __init__(self, on_mouse_down: Sequence[Callable] | Callable = (),
+                           on_mouse_up: Sequence[Callable] | Callable = (),
+                           while_mouse_down: Sequence[Callable] | Callable = (),
+                           on_mouse_over: Sequence[Callable] | Callable = (),
+                           on_mouse_not_over: Sequence[Callable] | Callable = (),
+                           while_mouse_over: Sequence[Callable] | Callable = (),
+                           drag_parent: Gui.GuiElement | None = None,
+                           drag_boundary: Gui.GuiElement | Gui.BoundingBox | None = None, **_):
             """
             A base gui class that adds the framework for mouse interaction, allowing the element to handle mouse clicks, releases, and holding, as well as mouse over and not over, and dragging of element.
 
@@ -363,7 +363,7 @@ class Gui:
             self.on_mouse_not_over: list[Callable] = get_list_of_input(on_mouse_not_over)
             self.while_mouse_over: list[Callable] = get_list_of_input(while_mouse_over)
 
-            self.drag_parent: Union[Gui.GuiElement, None] = drag_parent
+            self.drag_parent: Gui.GuiElement | None = drag_parent
 
             if self.drag_parent:
                 self.drag_start = None
@@ -731,12 +731,12 @@ class Gui:
                      text: str = "",
                      valid_chars=WHOLE_KEYBOARD,
                      empty_text: str = "",
-                     max_text_length: Union[int, None] = None,
+                     max_text_length: int | None = None,
                      horizontal_align="LEFT",
                      clear_text_on_first_select=False,
                      cursor_width_multiplier: float = 1,
                      cursor_blink_secs: float = 0.75,
-                     on_deselect: Union[Sequence[Callable], Callable, None] = None,
+                     on_deselect: Sequence[Callable] | Callable | None = None,
                      **kwargs):
             Gui.Rect.__init__(self, pos, **kwargs)
 
@@ -779,7 +779,7 @@ class Gui:
             self.has_been_selected_yet = False
             self.text_element.text = self.empty_text
 
-        def set_selected(self, selected: bool = True, button: Union[int, None] = None):
+        def set_selected(self, selected: bool = True, button: int | None = None):
             """
             Sets this element to be selected or deselected. Note: this does not deselect this element in the KeyboardHandler. I.e. Calling only this function will still allow the user to type in this element.
             :param selected: Whether to select or deselect this element. True: select, False: deselect.
@@ -853,7 +853,7 @@ class Gui:
 
 
 # TODO: Find some way to not have to call this every time an element is drawn, only when its parent bounding box changes size
-def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = None,
+def get_auto_center_function(element_centered_on: Gui.GuiElement | None = None,
                              align: list[str, str] = ("CENTER", "CENTER"),
                              constant_offset: Vert = Vert(0, 0),
                              offset_scaled_by_element_width: Vert = Vert(0, 0),
@@ -888,7 +888,7 @@ def get_auto_center_function(element_centered_on: Union[Gui.GuiElement, None] = 
 
     return auto_center
 
-def get_auto_font_size_function(element_under: Union[Gui.GuiElement, None] = None,
+def get_auto_font_size_function(element_under: Gui.GuiElement | None = None,
                                 constant_size: float = 0,
                                 size_scaled_by_parent_width: float = 0,
                                 size_scaled_by_parent_height: float = 0):
@@ -907,10 +907,10 @@ class InputHandler:
     # The code for MouseEventHandler and KeyboardEventHandler is almost identical, the only difference is how
     #  I track which buttons are down at a given moment
     def __init__(self,
-                 main: Union[Sequence[Callable], Callable] = (),
-                 on_input_down: Union[Sequence[Callable], Callable] = (),
-                 on_input_up: Union[Sequence[Callable], Callable] = (),
-                 while_input_down: Union[Sequence[Callable], Callable] = ()):
+                 main: Sequence[Callable] | Callable = (),
+                 on_input_down: Sequence[Callable] | Callable = (),
+                 on_input_up: Sequence[Callable] | Callable = (),
+                 while_input_down: Sequence[Callable] | Callable = ()):
         self.inputs_down = []
         self.p_inputs_down = []
 
@@ -961,11 +961,11 @@ class InputHandler:
 class MouseEventHandler(InputHandler):
 
     def __init__(self,
-                 main: Union[Sequence[Callable], Callable] = (),
-                 on_mouse_down: Union[Sequence[Callable], Callable] = (),
-                 on_mouse_up: Union[Sequence[Callable], Callable] = (),
-                 while_mouse_down: Union[Sequence[Callable], Callable] = (),
-                 while_mouse_up: Union[Sequence[Callable], Callable] = ()):
+                 main: Sequence[Callable] | Callable = (),
+                 on_mouse_down: Sequence[Callable] | Callable = (),
+                 on_mouse_up: Sequence[Callable] | Callable = (),
+                 while_mouse_down: Sequence[Callable] | Callable = (),
+                 while_mouse_up: Sequence[Callable] | Callable = ()):
         super().__init__(main, on_mouse_down, on_mouse_up, while_mouse_down)
         self.while_input_up_funcs = get_list_of_input(while_mouse_up)
         self.mouse_buttons_list: list[bool, bool, bool] = []
@@ -986,16 +986,16 @@ class MouseEventHandler(InputHandler):
             while_input_up_func(inp)
 
 class GuiMouseEventHandler(MouseEventHandler):
-    def __init__(self, keyboard_event_handler: Union[GuiKeyboardEventHandler, None] = None,
-                 on_mouse_down: Union[Sequence[Callable], Callable] = (),
-                 on_mouse_up: Union[Sequence[Callable], Callable] = (),
-                 while_mouse_down: Union[Sequence[Callable], Callable] = (),
-                 while_mouse_up: Union[Sequence[Callable], Callable] = (),
-                 main: Union[Sequence[Callable], Callable] = ()):
+    def __init__(self, keyboard_event_handler: GuiKeyboardEventHandler | None = None,
+                 on_mouse_down: Sequence[Callable] | Callable = (),
+                 on_mouse_up: Sequence[Callable] | Callable = (),
+                 while_mouse_down: Sequence[Callable] | Callable = (),
+                 while_mouse_up: Sequence[Callable] | Callable = (),
+                 main: Sequence[Callable] | Callable = ()):
         super().__init__(main, on_mouse_down, on_mouse_up, while_mouse_down, while_mouse_up)
         self.mouse_pos = self.p_mouse_pos = Vert(pygame.mouse.get_pos())
 
-        self.elements_holding_per_button: list[Union[Gui.GuiElement, Gui.MouseInteractable, None]] = [None, None, None]
+        self.elements_holding_per_button: list[Gui.GuiElement | Gui.MouseInteractable | None] = [None, None, None]
         self.element_over = self.p_element_over = None
 
         self.guis = self.p_guis = []
@@ -1006,7 +1006,7 @@ class GuiMouseEventHandler(MouseEventHandler):
         self.main_funcs.append(self.main_gui)
         self.keyboard_event_handler = keyboard_event_handler
 
-    def main(self, active_gui: Union[Gui.GuiElement, Sequence[Gui.GuiElement], None] = None):
+    def main(self, active_gui: Gui.GuiElement | Sequence[Gui.GuiElement] = ()):
         """
         Main function for GuiMouseEventHandler. Call this every frame.
         :param active_gui: A single or list of GuiElement(s) or ElementGroup(s) to process mouse events for. Earlier elements will have priority (i.e. later elements will overlap earlier elements, just as is when they are drawn).
@@ -1091,11 +1091,11 @@ class KeyboardEventHandler(InputHandler):
     KEY_REPEAT_RATE = 0.04
 
     def __init__(self,
-                 main: Union[Sequence[Callable], Callable] = (),
-                 on_key_down: Union[Sequence[Callable], Callable] = (),
-                 on_key_up: Union[Sequence[Callable], Callable] = (),
-                 while_key_down: Union[Sequence[Callable], Callable] = (),
-                 on_key_repeat: Union[Sequence[Callable], Callable] = ()):
+                 main: Sequence[Callable] | Callable = (),
+                 on_key_down: Sequence[Callable] | Callable = (),
+                 on_key_up: Sequence[Callable] | Callable = (),
+                 while_key_down: Sequence[Callable] | Callable = (),
+                 on_key_repeat: Sequence[Callable] | Callable = ()):
         super().__init__(main, on_key_down, on_key_up, while_key_down)
         self.on_key_repeat_funcs = get_list_of_input(on_key_repeat)
 
@@ -1130,11 +1130,11 @@ class KeyboardEventHandler(InputHandler):
 
 class GuiKeyboardEventHandler(KeyboardEventHandler):
     def __init__(self,
-                 main: Union[Sequence[Callable], Callable] = (),
-                 on_key_down: Union[Sequence[Callable], Callable] = (),
-                 on_key_up: Union[Sequence[Callable], Callable] = (),
-                 while_key_down: Union[Sequence[Callable], Callable] = (),
-                 on_key_repeat: Union[Sequence[Callable], Callable] = ()):
+                 main: Sequence[Callable] | Callable = (),
+                 on_key_down: Sequence[Callable] | Callable = (),
+                 on_key_up: Sequence[Callable] | Callable = (),
+                 while_key_down: Sequence[Callable] | Callable = (),
+                 on_key_repeat: Sequence[Callable] | Callable = ()):
         super().__init__(main, on_key_down, on_key_up, while_key_down, on_key_repeat)
         self.element_selected = None
 
@@ -1146,7 +1146,7 @@ class GuiKeyboardEventHandler(KeyboardEventHandler):
         self.while_input_down_funcs.append(self.while_key_down_gui)
         self.main_funcs.append(self.main_gui)
 
-    def main(self, active_gui: Union[Gui.GuiElement, Sequence[Gui.GuiElement], None] = None):
+    def main(self, active_gui: Gui.GuiElement | Sequence[Gui.GuiElement] = ()):
         """
         Main function for GuiKeyboardEventHandler. Call this every frame.
         :param active_gui: A single or list of GuiElement(s) or ElementGroup(s) to process mouse events for. Earlier elements will have priority (i.e. later elements will overlap earlier elements, just as is when they are drawn).
