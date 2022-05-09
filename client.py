@@ -689,8 +689,9 @@ class Menus:
         def __init__(self):
             super().__init__()
 
+            # region Element event functions
             def element_on_mouse_over(element):
-                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                if element in [self.promote_player_button, self.kick_player_button] and self.player_action_buttons_grayed:
                     return
                 is_player_list_element = element in self.player_list_container.contents
 
@@ -706,7 +707,7 @@ class Menus:
                     element.col = mouse_over_color
 
             def element_on_mouse_not_over(element):
-                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                if element in [self.promote_player_button, self.kick_player_button] and self.player_action_buttons_grayed:
                     return
                 is_player_list_element = element in self.player_list_container.contents
 
@@ -722,7 +723,7 @@ class Menus:
                     element.col = mouse_default_color
 
             def element_on_mouse_down(element, *_):
-                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                if element in [self.promote_player_button, self.kick_player_button] and self.player_action_buttons_grayed:
                     return
 
                 mouse_holding_color = self.button_mouse_holding_color
@@ -734,7 +735,7 @@ class Menus:
                 element.col = mouse_holding_color
 
             def element_on_mouse_up(element, *_):
-                if (element is self.kick_player_button or element is self.promote_player_button) and self.player_selected is None:
+                if element in [self.promote_player_button, self.kick_player_button] and self.player_action_buttons_grayed:
                     return
                 is_player_list_element = element in self.player_list_container.contents
 
@@ -759,8 +760,10 @@ class Menus:
                     network.send(Messages.ChangeLobbySettingsMessage(private=self.private))
                     self.player_selected = None
                 elif element is self.promote_player_button:
-                    # TODO: If player is already host, don't send
-                    network.send(Messages.ChangeLobbySettingsMessage(host_id=self.player_selected.client_id))
+                    if self.player_selected.client_id != self._host_id:
+                        network.send(Messages.ChangeLobbySettingsMessage(host_id=self.player_selected.client_id))
+                elif element is self.kick_player_button:
+                    network.send(Messages.KickPlayerFromLobbyMessage(self.player_selected.client_id))
                 elif is_player_list_element:
                     for player, list_element in zip(self.player_list, self.player_list_container.contents):
                         if element is list_element:
@@ -776,6 +779,7 @@ class Menus:
                 "on_mouse_over": [element_on_mouse_over],
                 "on_mouse_not_over": [element_on_mouse_not_over]
             }
+            # endregion
 
             # region Initialize gui elements
             self.lobby_title = Gui.TextInput(text=default_lobby_title, valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
@@ -826,6 +830,7 @@ class Menus:
             self._host_id: Union[int, None] = network.client_id
             self.player_list: list[Menus.HostLobbyRoom.ConnectedPlayer] = []
             self.set_player_list([(username, network.client_id)])
+            self.player_action_buttons_grayed = True
 
         def set_lobby_info(self, lobby_info: LobbyInfo):
             if self.private != lobby_info.private:
@@ -833,7 +838,6 @@ class Menus:
             if self.lobby_title.text != lobby_info.lobby_title:
                 self.lobby_title.text = lobby_info.lobby_title
             self._host_id = lobby_info.host[1]
-            print(self._host_id)
             self.set_player_list(lobby_info.players)
 
         def set_player_list(self, value: list[tuple[str, int]]):
@@ -867,10 +871,9 @@ class Menus:
                     if corresponding_player.name != player_name:
                         corresponding_player.name = player_name
                     status = "Host" if client_id == self._host_id else "Member"
-                    # TODO: Make sure this is working:
                     if corresponding_player.status != status:
                         corresponding_player.status = status
-                    print(client_id, player_name, status)
+                        self.set_player_action_buttons_grayed()
 
             self.resize_player_list_elements()
 
@@ -886,6 +889,17 @@ class Menus:
             else:
                 self.toggle_private_button_text.text = "Set Private"
 
+        def set_player_action_buttons_grayed(self):
+            if self._player_selected and self._player_selected.client_id != self._host_id:
+                self.player_action_buttons_grayed = False
+                self.reset_button_color(self.promote_player_button)
+                self.reset_button_color(self.kick_player_button)
+                self.promote_player_button_text.col = self.kick_player_button_text.col = (0,) * 3
+            else:
+                self.player_action_buttons_grayed = True
+                self.promote_player_button.col = self.kick_player_button.col = self.button_grayed_out_color
+                self.promote_player_button_text.col = self.kick_player_button_text.col = self.text_grayed_out_color
+
         @property
         def player_selected(self):
             return self._player_selected
@@ -895,15 +909,10 @@ class Menus:
             if self._player_selected:
                 self._player_selected.set_selected(False)
             self._player_selected = value
-
             if self._player_selected:
                 self._player_selected.set_selected(True)
-                self.reset_button_color(self.promote_player_button)
-                self.reset_button_color(self.kick_player_button)
-                self.promote_player_button_text.col = self.kick_player_button_text.col = (0,) * 3
-            else:
-                self.promote_player_button.col = self.kick_player_button.col = self.button_grayed_out_color
-                self.promote_player_button_text.col = self.kick_player_button_text.col = self.text_grayed_out_color
+
+            self.set_player_action_buttons_grayed()
 
         def resize_player_list_elements(self):
             if len(self.player_list) == 0:

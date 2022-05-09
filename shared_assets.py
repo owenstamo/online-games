@@ -133,6 +133,12 @@ class Messages:
         def __init__(self, error=None):
             self.error = error
 
+    class KickPlayerFromLobbyMessage(Message):
+        type = "kick_player_from_lobby"
+
+        def __init__(self, client_id: int):
+            self.client_id = client_id
+
 class GameInfo:
     def __init__(self, title, image):
         self.title = title
