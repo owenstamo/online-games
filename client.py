@@ -687,6 +687,8 @@ class Menus:
                 self.status_text_element.text = value
 
         def __init__(self):
+            # TODO: Add some detection for if the lobby was just created, or if ownership was transferred.
+            #  Add some way to transfer the lobby settings back and forth between host and member lobby gui
             super().__init__()
 
             # region Element event functions
@@ -784,7 +786,7 @@ class Menus:
             # region Initialize gui elements
             self.lobby_title = Gui.TextInput(text=default_lobby_title, valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
                                              max_text_length=max_lobby_name_length, on_deselect=on_text_input_deselect,
-                                             **self.element_mouse_functions)
+                                             clear_text_on_first_select=True, **self.element_mouse_functions)
             self.player_list_container = Gui.Rect(col=(255,) * 3)
             self.game_settings_container = Gui.Rect(col=(190,) * 3)
 

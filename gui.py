@@ -725,10 +725,19 @@ class Gui:
                                  text_bounding_box.top_right.list, text_bounding_box.bottom_right.list,
                                  int(self.cursor_width_multiplier * self.text_element.font_size / 15))
 
-        def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), text: str = "", valid_chars=WHOLE_KEYBOARD,
-                     empty_text: str = "", max_text_length: Union[int, None] = None, horizontal_align="LEFT",
-                     cursor_width_multiplier: float = 1, cursor_blink_secs: float = 0.75,
-                     on_deselect: Union[Sequence[Callable], Callable, None] = None, **kwargs):
+        def __init__(self,
+                     pos: Vert = Vert(0, 0),
+                     size: Vert = Vert(0, 0),
+                     text: str = "",
+                     valid_chars=WHOLE_KEYBOARD,
+                     empty_text: str = "",
+                     max_text_length: Union[int, None] = None,
+                     horizontal_align="LEFT",
+                     clear_text_on_first_select=False,
+                     cursor_width_multiplier: float = 1,
+                     cursor_blink_secs: float = 0.75,
+                     on_deselect: Union[Sequence[Callable], Callable, None] = None,
+                     **kwargs):
             Gui.Rect.__init__(self, pos, **kwargs)
 
             horizontal_align = horizontal_align.upper()
@@ -736,7 +745,7 @@ class Gui:
                 raise ValueError("Horizontal align must be: LEFT, CENTER, or RIGHT.")
 
             self.max_text_length = math.inf if max_text_length is None else max_text_length
-            self.has_been_selected_yet = False
+            self.has_been_selected_yet = False if empty_text or clear_text_on_first_select else True
             self.empty_text = empty_text
 
             self.on_deselect = get_list_of_input(on_deselect)

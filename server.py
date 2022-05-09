@@ -4,7 +4,7 @@ import _thread
 import pickle
 from shared_assets import Messages, port, LobbyInfo
 
-lobbies: dict[str: Lobby] = {}
+lobbies: dict[int, Lobby] = {}
 
 class Lobby:
     available_lobby_id = 0
@@ -57,6 +57,7 @@ class Lobby:
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
             if client_in_lobby is player:
+                client_in_lobby.lobby_in = None
                 del self.player_clients[i]
                 break
 
@@ -92,12 +93,12 @@ class Lobby:
 
 class ConnectedClient:
     def __init__(self, client_id, conn, address, username=None):
-        self.client_id = client_id
+        self.client_id: int = client_id
         self.conn = conn
         self.address = address
         self.username = username
 
-        self.lobby_in = None
+        self.lobby_in: Lobby | None = None
 
 class Server:
     # Should the client join the server when they start the game, or when they join the lobby?
@@ -134,7 +135,7 @@ class Server:
         return message
 
 
-clients_connected = {}
+clients_connected: dict[int, ConnectedClient] = {}
 
 def delete_lobby(lobby: Lobby):
     for client in lobby.player_clients:
@@ -200,6 +201,11 @@ def listen_to_client(client: ConnectedClient):
 
             if message.host_id != message.unchanged:
                 client.lobby_in.host_client = clients_connected[message.host_id]
+
+        elif message.type == Messages.KickPlayerFromLobbyMessage.type:
+            kicked_player = clients_connected[message.client_id]
+            kicked_player.lobby_in.remove_player(kicked_player)
+            server.send(kicked_player, Messages.KickedFromLobbyMessage())
 
     print(f"Disconnected from {client.address}")
 
