@@ -630,12 +630,17 @@ class Menus:
             self.resize_lobby_list_elements()
             self.resize_lobby_info_elements()
 
-    # class LobbyRoom(Menu):
-    #     parent class of other two lobby rooms. handles all shared element sizes, text, positions, etc.
-
-    class HostLobbyRoom(Menu):
+    class LobbyRoom(Menu):
         button_grayed_out_color = (230,) * 3
         text_grayed_out_color = (100,) * 3
+
+        def __init__(self):
+            super().__init__()
+
+        def resize_elements(self):
+            ...
+
+    class HostLobbyRoom(LobbyRoom):
 
         class ConnectedPlayer:
             PLAYER_LIST_ELEMENT_DEFAULT_COLOR = (240,) * 3
