@@ -36,6 +36,7 @@ class Network:
         try:
             message = pickle.loads(incoming_message)
         except EOFError as e:
+            print(f"Received EOFError when loading server message: {e}")
             message = shared_assets.Messages.ErrorMessage(e)
 
         print(f"  [R] Received {message.style} of type {message.type} from server.")

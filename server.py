@@ -2,7 +2,10 @@ from __future__ import annotations
 import socket
 import _thread
 import pickle
+from typing import Sequence
 from shared_assets import Messages, port, LobbyInfo
+
+# TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
 
 lobbies: dict[int, Lobby] = {}
 
@@ -19,7 +22,7 @@ class Lobby:
         self.player_clients: list[ConnectedClient] = [host]
 
         self.game_id = None
-        self.max_players = 2
+        self.max_players = 10
 
         self._private = private  # self.closed = True/False (the name may be more accurate)
         # self.password = None
@@ -30,8 +33,9 @@ class Lobby:
 
     @host_client.setter
     def host_client(self, value: ConnectedClient):
+        old_host = self._host_client
         self._host_client = value
-        self.send_lobby_info_to_members()
+        self.send_lobby_info_to_members(old_host)
         send_lobbies_to_each_client()
 
     @property
@@ -41,7 +45,7 @@ class Lobby:
     @private.setter
     def private(self, value: bool):
         self._private = value
-        self.send_lobby_info_to_members()
+        self.send_lobby_info_to_members(self._host_client)
         send_lobbies_to_each_client()
 
     @property
@@ -51,7 +55,7 @@ class Lobby:
     @title.setter
     def title(self, value):
         self._title = value
-        self.send_lobby_info_to_members()
+        self.send_lobby_info_to_members(self._host_client)
         send_lobbies_to_each_client()
 
     def remove_player(self, player: ConnectedClient):
@@ -87,8 +91,12 @@ class Lobby:
 
         return LobbyInfo(**parameters)
 
-    def send_lobby_info_to_members(self):
+    def send_lobby_info_to_members(self, players_to_ignore: ConnectedClient | Sequence[ConnectedClient] = None):
+        if not isinstance(players_to_ignore, Sequence):
+            players_to_ignore = [players_to_ignore]
         for member in self.player_clients:
+            if member in players_to_ignore:
+                continue
             server.send(member, Messages.LobbyInfoMessage(self.get_lobby_info(True)))
 
 class ConnectedClient:
@@ -206,6 +214,9 @@ def listen_to_client(client: ConnectedClient):
             kicked_player = clients_connected[message.client_id]
             kicked_player.lobby_in.remove_player(kicked_player)
             server.send(kicked_player, Messages.KickedFromLobbyMessage())
+
+        elif message.type == Messages.LobbyInfoRequest.type:
+            server.send(client, Messages.LobbyInfoMessage(client.lobby_in.get_lobby_info()))
 
     print(f"Disconnected from {client.address}")
 

@@ -747,6 +747,7 @@ class Gui:
             self.max_text_length = math.inf if max_text_length is None else max_text_length
             self.has_been_selected_yet = False if empty_text or clear_text_on_first_select else True
             self.empty_text = empty_text
+            self.true_text = text
 
             self.on_deselect = get_list_of_input(on_deselect)
 
@@ -755,7 +756,7 @@ class Gui:
             text_offset = {"LEFT": Vert(self.text_padding_scalar, 0),
                            "CENTER": Vert(0, 0),
                            "RIGHT": Vert(-self.text_padding_scalar, 0)}[horizontal_align]
-            self.text_element = Gui.Text(empty_text if text == "" else text,
+            self.text_element = Gui.Text(empty_text if text == "" else self.true_text,
                                          text_align=[horizontal_align, "CENTER"],
                                          on_draw_before=get_auto_center_function(
                                              align=[horizontal_align, "CENTER"],
@@ -775,10 +776,6 @@ class Gui:
         def text_padding(self):
             return self.bounding_box.size.y * self.text_padding_scalar
 
-        def reset_text(self):
-            self.has_been_selected_yet = False
-            self.text_element.text = self.empty_text
-
         def set_selected(self, selected: bool = True, button: int | None = None):
             """
             Sets this element to be selected or deselected. Note: this does not deselect this element in the KeyboardHandler. I.e. Calling only this function will still allow the user to type in this element.
@@ -790,13 +787,14 @@ class Gui:
                 self.reset_cursor()
                 if not self.has_been_selected_yet:
                     self.has_been_selected_yet = True
-                    self.text_element.text = ""
+                    self.text = ""
                 if button == 2:
-                    self.text_element.text = ""
+                    self.text = ""
             else:
                 self.is_selected = False
                 if self.text_element.text == "":
-                    self.reset_text()
+                    self.has_been_selected_yet = False
+                    self.text_element.text = self.empty_text
                 for on_deselect_func in self.on_deselect:
                     on_deselect_func(self)
 
@@ -815,9 +813,9 @@ class Gui:
 
             if key_code == pygame.K_BACKSPACE and self.text_element.text:
                 if control_is_down:
-                    self.text_element.text = ""
+                    self.text = ""
                 else:
-                    self.text_element.text = self.text_element.text[:-1]
+                    self.text = self.text[:-1]
                 self.reset_cursor()
                 return
 
@@ -825,7 +823,7 @@ class Gui:
             if shift_is_down and key in self.SHIFTED_CHARS:
                 key = self.SHIFTED_CHARS[key]
             if key in self.valid_chars and len(self.text_element.text) < self.max_text_length:
-                self.text_element.text = self.text_element.text + key
+                self.text = self.text + key
                 self.reset_cursor()
 
         @property
@@ -845,10 +843,11 @@ class Gui:
 
         @property
         def text(self):
-            return self.text_element.text if self.has_been_selected_yet else ""
+            return self.true_text
 
         @text.setter
         def text(self, value: str):
+            self.true_text = value
             self.text_element.text = value
 
 

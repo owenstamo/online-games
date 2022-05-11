@@ -122,6 +122,9 @@ class Messages:
         def __init__(self, lobby_info: LobbyInfo):
             self.lobby_info = lobby_info
 
+    class LobbyInfoRequest(Request):
+        type = "lobby_info_request"
+
     # class InLobbyInfoRequest(Request):
     #     type = "lobby_info_request"
 
