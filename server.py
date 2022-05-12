@@ -24,7 +24,7 @@ class Lobby:
         self.game_id = None
         self.max_players = 10
 
-        self._private = private  # self.closed = True/False (the name may be more accurate)
+        self._private = private
         # self.password = None
 
     @property

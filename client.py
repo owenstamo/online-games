@@ -640,11 +640,9 @@ class MultiplayerMenu(Menu):
         self.resize_lobby_info_elements()
 
 class LobbyRoom(Menu):
+
     class ConnectedPlayer:
         PLAYER_LIST_ELEMENT_DEFAULT_COLOR = (240,) * 3
-        PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR = (230,) * 3
-        PLAYER_LIST_ELEMENT_MOUSE_HOLDING_COLOR = (200,) * 3
-        PLAYER_LIST_ELEMENT_SELECTED_COLOR = (220,) * 3
 
         def __init__(self, name, status, client_id, *_):
             self._name = name
@@ -681,6 +679,7 @@ class LobbyRoom(Menu):
             self.status_text_element.text = value
 
     button_grayed_out_color = (230,) * 3
+    button_selected_color = (170,) * 3
     text_grayed_out_color = (100,) * 3
     connected_player_type = ConnectedPlayer
 
@@ -689,6 +688,9 @@ class LobbyRoom(Menu):
 
         # region Element event functions
         def element_on_mouse_over(element):
+            if element is self.toggle_chat_button and self.chat_container.active:
+                return
+
             mouse_over_color = self.button_mouse_over_color
             if isinstance(element, Gui.TextInput):
                 mouse_over_color = self.text_input_mouse_over_color
@@ -697,6 +699,9 @@ class LobbyRoom(Menu):
                 element.col = mouse_over_color
 
         def element_on_mouse_not_over(element):
+            if element is self.toggle_chat_button and self.chat_container.active:
+                return
+
             mouse_default_color = self.button_default_color
             if isinstance(element, Gui.TextInput):
                 mouse_default_color = self.text_input_default_color
@@ -715,12 +720,22 @@ class LobbyRoom(Menu):
             default_and_mouse_over_colors = [self.button_default_color, self.button_mouse_over_color]
             if isinstance(element, Gui.TextInput):
                 default_and_mouse_over_colors = [self.text_input_default_color, self.text_input_mouse_over_color]
+            elif element is self.toggle_chat_button and not self.chat_container.active:
+                default_and_mouse_over_colors = [self.button_selected_color] * 2
 
             self.reset_button_color(element, *default_and_mouse_over_colors)
 
             if element is self.leave_button:
                 network.send(Messages.LeaveLobbyMessage())
                 Menus.set_active_menu(Menus.multiplayer_menu)
+            elif element is self.toggle_chat_button:
+                self.chat_container.active = not self.chat_container.active
+                for covered_element in self.elements_covered_by_chat_container:
+                    covered_element.active = not self.chat_container.active
+
+        def chat_on_key_input(keycode):
+            if keycode == pygame.K_RETURN:
+                self.chat_text_input.text = ""
 
         self.element_mouse_functions = {
             "on_mouse_down": [element_on_mouse_down],
@@ -731,27 +746,40 @@ class LobbyRoom(Menu):
         # endregion
 
         # region Initialize gui elements
+        # Containers for player list and game settings
         self.player_list_container = Gui.Rect(col=(255,) * 3)
         self.game_settings_container = Gui.Rect(col=(190,) * 3)
 
+        # Game selection/selected element, as well as the game image and text
         self.game_select = Gui.Rect(col=self.button_default_color)
         self.game_image, self.game_select_text_container = self.game_select.add_element([
             Gui.Rect(col=(200,) * 3, ignored_by_mouse=True), Gui.BoundingContainer()])
         self.game_select_text = self.game_select_text_container.add_element(Gui.Text(**self.new_text_parameters))
 
+        # Game start button / waiting element
         self.game_start_button = Gui.Rect(col=self.button_default_color)
         self.game_start_button_text = self.game_start_button.add_element(Gui.Text(**self.new_text_parameters))
 
+        # Leave, private, and chat buttons
         self.leave_button = Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
         self.toggle_private_button = Gui.Rect(col=self.button_default_color)
         self.toggle_chat_button = Gui.Rect(col=self.button_default_color, **self.element_mouse_functions)
 
+        # Text for leave, private, and chat buttons
         self.leave_button_text = self.leave_button.add_element(Gui.Text("Leave", **self.new_text_parameters))
         self.toggle_private_button_text = self.toggle_private_button.add_element(Gui.Text(**self.new_text_parameters))
         self.toggle_chat_button_text = self.toggle_chat_button.add_element(Gui.Text("Chat", **self.new_text_parameters))
 
+        # Element for lobby title and title text. Not specified yet because it can be a Rect or TextInput
         self.lobby_title: Gui.Rect | Gui.TextInput | None = None
         self.lobby_title_text: Gui.Text | Gui.TextInput | None = None
+
+        # Chat element
+        self.chat_container = Gui.Rect(col=(190,) * 3, active=False)
+        self.elements_covered_by_chat_container = [self.player_list_container]
+        self.chat_text_input = self.chat_container.add_element(
+            Gui.TextInput(empty_text="Enter message...", max_text_length=100, **self.element_mouse_functions,
+                          on_key_input=chat_on_key_input))
 
         self.gui.add_element([self.player_list_container, self.game_settings_container, self.game_select,
                               self.game_start_button, self.leave_button, self.toggle_private_button,
@@ -884,8 +912,15 @@ class LobbyRoom(Menu):
         self.player_list_container.pos = padding + Vert(0, button_size.y + padding.y)
 
         self.game_settings_container.pos = self.game_select.pos + Vert(0, self.game_select.size.y + padding.y)
-        self.game_settings_container.size = Vert(button_size.x,
-                                                 self.game_start_button.pos.y - self.game_settings_container.pos.y - padding.y)
+        self.game_settings_container.size = \
+            Vert(button_size.x, self.game_start_button.pos.y - self.game_settings_container.pos.y - padding.y)
+
+        self.chat_container.pos = self.player_list_container.pos
+        self.chat_container.size = \
+            Vert(button_size.x, self.leave_button.pos.y - self.chat_container.pos.y - padding.y)
+        self.chat_text_input.size = Vert(
+            self.chat_container.size.x, min(self.chat_container.size.y * 0.15, self.chat_container.size.x * 0.25))
+        self.chat_text_input.pos = Vert(0, self.chat_container.size.y - self.chat_text_input.size.y)
 
         if self.game_select_text.text:
             self.game_select_text.font_size = \
@@ -909,6 +944,10 @@ class LobbyRoom(Menu):
 
 class HostLobbyRoom(LobbyRoom):
     class ConnectedPlayerSelectable(LobbyRoom.ConnectedPlayer):
+        PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR = (230,) * 3
+        PLAYER_LIST_ELEMENT_MOUSE_HOLDING_COLOR = (200,) * 3
+        PLAYER_LIST_ELEMENT_SELECTED_COLOR = (220,) * 3
+
         def __init__(self, name, status, client_id, parent_menu: HostLobbyRoom):
             super().__init__(name, status, client_id)
 
@@ -941,9 +980,9 @@ class HostLobbyRoom(LobbyRoom):
 
         def set_selected(self, selected: bool):
             if selected:
-                self.list_gui_element.col = HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_SELECTED_COLOR
+                self.list_gui_element.col = HostLobbyRoom.ConnectedPlayerSelectable.PLAYER_LIST_ELEMENT_SELECTED_COLOR
             else:
-                self.list_gui_element.col = HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR if \
+                self.list_gui_element.col = HostLobbyRoom.ConnectedPlayerSelectable.PLAYER_LIST_ELEMENT_MOUSE_OVER_COLOR if \
                     self.list_gui_element.mouse_is_over else HostLobbyRoom.ConnectedPlayer.PLAYER_LIST_ELEMENT_DEFAULT_COLOR
 
     connected_player_type = ConnectedPlayerSelectable
@@ -1010,11 +1049,14 @@ class HostLobbyRoom(LobbyRoom):
             self.game_select.on_mouse_over, self.game_select.on_mouse_not_over = \
             self.element_mouse_functions.values()
 
+        # Clear the text on first select if user just created lobby, or if the lobby title is the default
+        clear_text_on_first_select = old_room is None or old_room.lobby_title_text.text == default_lobby_title
+
         self.lobby_title = Gui.TextInput(text=old_room.lobby_title_text.text if old_room else default_lobby_title,
                                          valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
                                          max_text_length=max_lobby_name_length, on_deselect=on_text_input_deselect,
-                                         clear_text_on_first_select=True, horizontal_align="CENTER",
-                                         **self.element_mouse_functions)
+                                         clear_text_on_first_select=clear_text_on_first_select,
+                                         horizontal_align="CENTER", **self.element_mouse_functions)
         self.lobby_title_text = self.lobby_title
 
         self.game_select_text.text = "Select Game"
@@ -1029,7 +1071,10 @@ class HostLobbyRoom(LobbyRoom):
             Gui.Text("Promote Player", col=self.text_grayed_out_color, **self.new_text_parameters))
         self.game_start_button_text.text = "Start Game"
 
-        self.gui.add_element([self.lobby_title, self.kick_player_button, self.promote_player_button])
+        self.gui.add_element([self.lobby_title, self.kick_player_button,
+                              self.promote_player_button, self.chat_container])
+
+        self.elements_covered_by_chat_container.extend([self.promote_player_button, self.kick_player_button])
         # endregion
 
         self._player_selected: HostLobbyRoom.ConnectedPlayerSelectable | None = None
@@ -1130,7 +1175,7 @@ class MemberLobbyRoom(LobbyRoom):
         self.game_select_text.text = "No Game Selected"
         self.game_start_button_text.text = "Waiting..."
 
-        self.gui.add_element(self.lobby_title)
+        self.gui.add_element([self.lobby_title, self.chat_container])
         # endregion
 
         if old_room:
@@ -1184,6 +1229,7 @@ class MemberLobbyRoom(LobbyRoom):
         self.resize_lobby_title_text()
 
         super().after_element_resize()
+
 
 class Menus:
     @classmethod

@@ -125,7 +125,7 @@ class Gui:
         def is_contained_under(self, container) -> bool:
             possible_container = self
             while possible_container.parent is not None:
-                possible_container = self.parent
+                possible_container = possible_container.parent
                 if possible_container is container:
                     return True
             return False
@@ -685,6 +685,47 @@ class Gui:
         def bounding_box_ignoring_children(self):
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
+    class Paragraph(Text):
+        def __init__(self, pos=Vert(0, 0), size=Vert(0, 0), **kwargs):
+            super().__init__(pos=pos, **kwargs)
+
+            self.size = size
+
+            self._text: list[str] = []
+            self.lines: list[str] = []
+
+        @property
+        def text(self):
+            return self._text
+
+        @text.setter
+        def text(self, value):
+            self._text = value
+
+            self.lines = []
+            for section in value:
+                section = section.split()
+                current_line = ""
+
+                first_word_of_line = True
+                for word in section:
+                    if self.font_object.render(current_line + word, self._antialias, self._col).get_size()[0] \
+                            > self.size.x:
+                        if first_word_of_line:
+                            current_line += word
+                            continue
+                        self.lines += [current_line]
+                        current_line = ""
+                        first_word_of_line = True
+                    else:
+                        first_word_of_line = False
+
+                    current_line += word
+
+                if current_line:
+                    self.lines += [current_line]
+
+
     class TextInput(Rect, MouseInteractable):
         # TODO: Add prefix + postfix text? Or just a function that takes in the text and outputs the contents.
         SHIFTED_CHARS = {lower: upper for lower, upper in
@@ -696,7 +737,7 @@ class Gui:
         ALPHABET = ALPHABET_UPPER + ALPHABET_LOWER
         NUMBERS = "1234567890"
         USERNAME_CHARS = ALPHABET + NUMBERS + "_"
-        WHOLE_KEYBOARD = tuple(SHIFTED_CHARS.keys()) + tuple(SHIFTED_CHARS.items())
+        WHOLE_KEYBOARD = tuple(SHIFTED_CHARS.keys()) + tuple(SHIFTED_CHARS.values()) + (" ",)
 
         def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
             estimated_default_size = self.text_element.size_per_font_size * self.default_font_size
@@ -737,6 +778,7 @@ class Gui:
                      cursor_width_multiplier: float = 1,
                      cursor_blink_secs: float = 0.75,
                      on_deselect: Sequence[Callable] | Callable | None = None,
+                     on_key_input: Sequence[Callable] | Callable | None = None,
                      **kwargs):
             Gui.Rect.__init__(self, pos, **kwargs)
 
@@ -750,6 +792,7 @@ class Gui:
             self.true_text = text
 
             self.on_deselect = get_list_of_input(on_deselect)
+            self.on_key_input = get_list_of_input(on_key_input)
 
             # Number to be multiplied by this element's text's height to find its left and right padding
             self.text_padding_scalar = 0.25
@@ -803,8 +846,12 @@ class Gui:
             self.cursor_active = True
 
         def add_character(self, key_code: int, keys_down=()):
+            def call_on_key_input():
+                for on_key_input_func in self.on_key_input:
+                    on_key_input_func(key_code)
+
             if key_code > 0x10ffff:
-                return
+                return call_on_key_input()
 
             shift_is_down = pygame.K_LSHIFT in keys_down or \
                             pygame.K_RSHIFT in keys_down
@@ -817,7 +864,7 @@ class Gui:
                 else:
                     self.text = self.text[:-1]
                 self.reset_cursor()
-                return
+                return call_on_key_input()
 
             key = chr(key_code)
             if shift_is_down and key in self.SHIFTED_CHARS:
@@ -825,6 +872,8 @@ class Gui:
             if key in self.valid_chars and len(self.text_element.text) < self.max_text_length:
                 self.text = self.text + key
                 self.reset_cursor()
+
+            call_on_key_input()
 
         @property
         def size(self):
@@ -1160,6 +1209,7 @@ class GuiKeyboardEventHandler(KeyboardEventHandler):
         If the element being selected is a TextInput, set self.element_selected to that element. If the element isn't
         a text input or isn't under any guis in self.guis, then deselect the currently selected TextInput.
         """
+
         if isinstance(element_clicked, Gui.TextInput) and \
                 any([element_clicked.is_contained_under(gui) for gui in self.guis]):
             self.element_selected = element_clicked
