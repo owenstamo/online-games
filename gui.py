@@ -703,28 +703,30 @@ class Gui:
             self._text = value
 
             self.lines = []
+            line_height = None
             for section in value:
                 section = section.split()
                 current_line = ""
 
                 first_word_of_line = True
                 for word in section:
-                    if self.font_object.render(current_line + word, self._antialias, self._col).get_size()[0] \
-                            > self.size.x:
+                    rendered_size = self.font_object.render(current_line + word, self._antialias, self._col).get_size()
+                    if not line_height:
+                        line_height = rendered_size[1]
+                    if rendered_size[0] > self.size.x:
                         if first_word_of_line:
-                            current_line += word
-                            continue
-                        self.lines += [current_line]
+                            current_line += word + " "
+                        self.lines += [current_line[:-1]]
                         current_line = ""
                         first_word_of_line = True
                     else:
                         first_word_of_line = False
 
-                    current_line += word
+                    if not first_word_of_line:
+                        current_line += word + " "
 
                 if current_line:
-                    self.lines += [current_line]
-
+                    self.lines += [current_line[:-1]]
 
     class TextInput(Rect, MouseInteractable):
         # TODO: Add prefix + postfix text? Or just a function that takes in the text and outputs the contents.

@@ -16,7 +16,7 @@ main_menu = Gui.ContainerElement(Vert(0, 0), contents=[
 main_menu.add_element(rect := Gui.Rect(Vert(50, 20), Vert(100, 50), (0, 0, 0), ignore_bounding_box=False))
 rect.add_element(circ := Gui.Circle(Vert(100, 100), 50, (150, 150, 150), ignore_bounding_box=False))
 circ.add_element(text := Gui.Text("OMG HI", font_size=20, col=(255, 255, 255), text_align=("CENTER", "CENTER"),
-                                  on_draw_before=get_auto_center_function(align=["CENTER", "CENTER"], offset_scaled_by_element=Vert(0, 0.075))))
+                                  on_draw_before=get_auto_center_function(align=["CENTER", "CENTER"], offset_scaled_by_element_height=Vert(0, 0.075))))
 rect.add_element(bar := Gui.Rect(Vert(0, -20), Vert(100, 20), (255, 255, 255),
                                  drag_parent=rect, drag_boundary=Vert(canvas.get_size())))
 
