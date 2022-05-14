@@ -8,6 +8,15 @@ pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
 
+text_paragraph_box = Gui.Rect(Vert(250, 200), Vert(200, 200))
+text_paragraph = text_paragraph_box.add_element(
+    Gui.Paragraph(text=["this is a very long string of text", "this is another long string of the quick brown fox WWWWWWWWWWWWWWWWWWWWWWWWWW jumped over the alzy dog the quick brown fox jumped over the lazy dog. text on another line", "this is 123456789123456789123456789 text with a long word"],
+                  pos=Vert(100, 0), size=Vert(200, 5), font_size=20, text_align=["TOP", "CENTER"])
+)
+# text_paragraph_box.add_element(Gui.Text("this is a very", font_size=20, text_align=["LEFT", "TOP"]))
+print(text_paragraph.lines)
+
+
 main_menu = Gui.ContainerElement(Vert(0, 0), contents=[
     Gui.Rect(Vert(0, 100), Vert(50, 50), (0, 0, 0))])
 # main_menu = Gui.BoundingContainer(Vert(0, 0), Vert(600, 450), contents=[
@@ -35,6 +44,7 @@ while canvas_active:
     canvas.fill((215,) * 3)
 
     main_menu.draw(canvas)
+    text_paragraph_box.draw(canvas)
 
     if main_menu.bounding_box:
         pygame.draw.circle(canvas, (100,) * 3, main_menu.bounding_box.top_left.list, 5)

@@ -22,6 +22,8 @@ def get_list_of_input(inp: any) -> list:
     else:
         return [] if inp is None else [inp]
 
+
+OFFSETS = {"LEFT": 0, "TOP": 0, "CENTER": 0.5, "RIGHT": 1, "BOTTOM": 1}
 def align_handler(text_align):
     if len(text_align) != 2:
         raise TypeError("Text align must be a list with two elements")
@@ -208,6 +210,7 @@ class Gui:
             self._contents: list[Gui.GuiElement] = []
             self.contents = contents
 
+        # TODO: Make add_element able to take multiple parameters as opposed to only taking lists for multiple elements
         def add_element(self, elements: Gui.GuiElement | Sequence[Gui.GuiElement]):
             orig_elements = [element for element in elements] if isinstance(elements, Sequence) else elements
             if isinstance(elements, Sequence):
@@ -530,7 +533,7 @@ class Gui:
                 self.reevaluate_bounding_box()
 
     class Text(GuiElement):
-        HEIGHT_ADJUSTMENT = Vert(0, 0.05)
+        HEIGHT_ADJUSTMENT = 0.05
 
         def __init__(self, text: str = "", pos: ImmutableVert = ImmutableVert(0, 0), font_size: int = 0,
                      font: str = "calibri", col: Tuple[int, int, int] = (0, 0, 0),
@@ -570,10 +573,9 @@ class Gui:
             """
             Calculates or recalculates this element's draw position. Takes position, text align, and rendered text, meaning this should be called whenever those are changed.
             """
-            offsets = {"LEFT": 0, "TOP": 0, "CENTER": 0.5, "RIGHT": 1, "BOTTOM": 1}
-            self._draw_pos = self._pos - self.rendered_size * Vert([offsets[align] for align in self._text_align])
+            self._draw_pos = self._pos - self.rendered_size * Vert([OFFSETS[align] for align in self._text_align])
             if self.adjust_height:
-                self._draw_pos += self.rendered_size * self.HEIGHT_ADJUSTMENT
+                self._draw_pos += Vert(0, self.font_size * self.HEIGHT_ADJUSTMENT)
             self.reevaluate_bounding_box()
 
         def calculate_size_per_font_size(self):
@@ -686,13 +688,23 @@ class Gui:
             return Gui.BoundingBox(self._draw_pos - self._pos, self.rendered_size)
 
     class Paragraph(Text):
-        def __init__(self, pos=Vert(0, 0), size=Vert(0, 0), **kwargs):
+        # TODO: Maybe make an append_text method of some sort so you don't have to recalculate everything any time you want to add text.
+        #  Or maybe make the text setter do that automatically, so you can get rid of elements as well. Idk.
+        #  Maybe also make some option to delete text elements that are out of bounds? (or something) actually maybe not idrk
+        #     Or make a cap for how many lines can be stored or whatever. like something big.
+
+        # Also maybe make TextInput allow Paragraphs? That might be rly hard tho
+
+        def __init__(self, text: list[str] = None, pos=Vert(0, 0), size=Vert(0, 0), line_spacing: int = 0, **kwargs):
+            self.size = size
+            self.lines: list[str] = []
+            self.line_spacing = line_spacing
+            self.rendered_sizes: list[Vert] = []
+            self.horizontal_offsets = []
+
             super().__init__(pos=pos, **kwargs)
 
-            self.size = size
-
-            self._text: list[str] = []
-            self.lines: list[str] = []
+            self.text = text if text else []
 
         @property
         def text(self):
@@ -703,30 +715,103 @@ class Gui:
             self._text = value
 
             self.lines = []
-            line_height = None
             for section in value:
                 section = section.split()
                 current_line = ""
-
-                first_word_of_line = True
                 for word in section:
                     rendered_size = self.font_object.render(current_line + word, self._antialias, self._col).get_size()
-                    if not line_height:
-                        line_height = rendered_size[1]
-                    if rendered_size[0] > self.size.x:
-                        if first_word_of_line:
-                            current_line += word + " "
-                        self.lines += [current_line[:-1]]
-                        current_line = ""
-                        first_word_of_line = True
-                    else:
-                        first_word_of_line = False
 
-                    if not first_word_of_line:
-                        current_line += word + " "
+                    if rendered_size[0] > self.size.x:
+                        # if current_line:
+                        self.lines.append(current_line[:-1])
+                        current_line = ""
+
+                        # Check if word size is greater than size. If so, split the word.
+                        word_rendered_size = self.font_object.render(word, self._antialias, self._col).get_size()
+                        if word_rendered_size[0] > self.size.x:
+                            for letter in word:
+                                rendered_size = self.font_object.render(current_line + letter, self._antialias,
+                                                                        self._col).get_size()
+                                # print(rendered_size[0], self.size.x)
+                                if rendered_size[0] > self.size.x:
+                                    self.lines.append(current_line)
+                                    current_line = ""
+                                current_line += letter
+                            current_line += " "
+                            continue
+                    current_line += word + " "
 
                 if current_line:
-                    self.lines += [current_line[:-1]]
+                    self.lines.append(current_line[:-1])
+
+            self.render_font()
+
+        def calculate_pos(self):
+            super().calculate_pos()
+
+            if self.text_align[0] == "LEFT":
+                self.horizontal_offsets = [0] * len(self.rendered_sizes)
+            elif self.text_align[0] == "CENTER":
+                self.horizontal_offsets = [(self.rendered_size.x - line_size.x) / 2 for line_size in self.rendered_sizes]
+            elif self.text_align[0] == "RIGHT":
+                self.horizontal_offsets = [self.rendered_size.x - line_size.x for line_size in self.rendered_sizes]
+
+        def calculate_size_per_font_size(self):
+            size_per_font_size_detail = 20
+            if self.rendered_sizes:
+                longest_line_index = max(range(len(self.lines)), key=lambda i: self.rendered_sizes[i].x if self.rendered_sizes[i] else 0)
+                rendered_font = pygame.font.SysFont(self._font, size_per_font_size_detail) \
+                                               .render(self.lines[longest_line_index], False, (255, 255, 255))
+                self.size_per_font_size = \
+                    Vert(rendered_font.get_size()[0],
+                         size_per_font_size_detail * len(self.lines) + self.line_spacing * (len(self.lines) - 1)) \
+                    / size_per_font_size_detail
+            else:
+                self.size_per_font_size = Vert(0, 0)
+
+        def render_font(self):
+            self.rendered_font = []
+            self.rendered_sizes = []
+            rendered_size_y = self.font_size * len(self.lines) + self.line_spacing * (len(self.lines) - 1)
+
+            align_offset = OFFSETS[self.text_align[1]]
+            top_bound = -align_offset * self.size.y
+            bottom_bound = (1 - align_offset) * self.size.y - self.font_size
+            line_offset = 0
+
+            for line in self.lines:
+                # If the offset created by the text align (plus the line offset) is within the top and bottom bounds
+                # the top and bottom bound (found using self.size and the vertical text align), then render the text.
+                # Otherwise, add a placeholder unrendered text.
+                if bottom_bound >= line_offset - rendered_size_y * align_offset >= top_bound:
+                    self.rendered_font.append(rendered_line := self.font_object.render(line, self._antialias, self._col))
+                    self.rendered_sizes.append(Vert(rendered_line.get_size()))
+                else:
+                    self.rendered_font.append(None)
+                    self.rendered_sizes.append(Vert(0, 0))
+
+                line_offset += self.font_size + self.line_spacing
+
+            # Set the rendered size width to the maximum width of all lines. If there are no lines, set the rendered size to <0, 0>
+            if self.rendered_sizes:
+                self.rendered_size = Vert(max([size.x for size in self.rendered_sizes]), rendered_size_y)
+            else:
+                self.rendered_size = Vert(0, 0)
+
+            self.calculate_pos()
+
+        def create_font_object(self):
+            super().create_font_object()
+            self.text = self.text
+
+        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+            line_offset = 0
+
+            for i, rendered_font_line in enumerate(self.rendered_font):
+                if rendered_font_line:
+                    canvas.blit(rendered_font_line, self._draw_pos + parent_absolute_pos +
+                                Vert(self.horizontal_offsets[i], line_offset))
+                line_offset += self.font_size + self.line_spacing
 
     class TextInput(Rect, MouseInteractable):
         # TODO: Add prefix + postfix text? Or just a function that takes in the text and outputs the contents.
@@ -922,14 +1007,13 @@ def get_auto_center_function(element_centered_on: Gui.GuiElement | None = None,
     :param offset_scaled_by_parent_height: An offset added when drawing the element that is scaled by the height of the element centered on.
     """
     align = align_handler(align)
-    offsets = {"LEFT": 0, "TOP": 0, "CENTER": 0.5, "RIGHT": 1, "BOTTOM": 1}
 
     def auto_center(element: Gui.GuiElement, _):
         bounding_box = element_centered_on.bounding_box if element_centered_on else element.parent.bounding_box
         if not bounding_box:
             bounding_box = Gui.BoundingBox(Vert(0, 0), Vert(0, 0))
         element.pos = bounding_box.pos + \
-                      bounding_box.size * Vert(offsets[align[0]], offsets[align[1]]) + \
+                      bounding_box.size * Vert(OFFSETS[align[0]], OFFSETS[align[1]]) + \
                       bounding_box.size.x * offset_scaled_by_parent_width + \
                       bounding_box.size.y * offset_scaled_by_parent_height + \
                       element.bounding_box_ignoring_children.size.x * offset_scaled_by_element_width + \

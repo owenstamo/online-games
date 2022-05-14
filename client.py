@@ -682,6 +682,7 @@ class LobbyRoom(Menu):
     button_selected_color = (170,) * 3
     text_grayed_out_color = (100,) * 3
     connected_player_type = ConnectedPlayer
+    CHAT_FORMAT = "<{}> {}"
 
     def __init__(self, old_room: LobbyRoom | None = None):
         super().__init__()
@@ -734,7 +735,8 @@ class LobbyRoom(Menu):
                     covered_element.active = not self.chat_container.active
 
         def chat_on_key_input(keycode):
-            if keycode == pygame.K_RETURN:
+            if keycode == pygame.K_RETURN and self.chat_text_input.text:
+                self.chat_text.text += [self.CHAT_FORMAT.format(username, self.chat_text_input.text)]
                 self.chat_text_input.text = ""
 
         self.element_mouse_functions = {
@@ -777,9 +779,11 @@ class LobbyRoom(Menu):
         # Chat element
         self.chat_container = Gui.Rect(col=(190,) * 3, active=False)
         self.elements_covered_by_chat_container = [self.player_list_container]
-        self.chat_text_input = self.chat_container.add_element(
+        self.chat_text_input, self.chat_text = self.chat_container.add_element([
             Gui.TextInput(empty_text="Enter message...", max_text_length=100, **self.element_mouse_functions,
-                          on_key_input=chat_on_key_input))
+                          on_key_input=chat_on_key_input),
+            Gui.Paragraph(text_align=["BOTTOM", "LEFT"])
+        ])
 
         self.gui.add_element([self.player_list_container, self.game_settings_container, self.game_select,
                               self.game_start_button, self.leave_button, self.toggle_private_button,
@@ -890,14 +894,17 @@ class LobbyRoom(Menu):
         if self.lobby_title:
             self.lobby_title.pos, self.lobby_title.size = padding, button_size
 
+        # region Game select element
         self.game_select.pos = Vert(canvas_size.x - padding.x - button_size.x, padding.y)
         self.game_select.size = Vert(button_size.x, base_button_height * min(canvas_scale.x, canvas_scale.y))
         self.game_image.size = Vert(1, 1) * self.game_select.size.y
         self.game_select_text_container.pos, self.game_select_text_container.size = \
             Vert(self.game_image.size.x, 0), self.game_select.size - Vert(self.game_image.size.x, 0)
+        # endregion
 
         self.game_start_button.pos, self.game_start_button.size = canvas_size - padding - button_size, button_size
 
+        # region Leave, private, and chat buttons
         button_sizes = [Vert(2 / 5, 1), Vert(2 / 5, 1), Vert(1 / 5, 1)]
         self.leave_button.size = button_size * button_sizes[0] + Vert(2, 0)
         self.toggle_private_button.size = button_size * button_sizes[1] + Vert(2, 0)
@@ -908,20 +915,30 @@ class LobbyRoom(Menu):
                                               canvas_size.y - padding.y - button_size.y)
         self.toggle_chat_button.pos = Vert(self.toggle_private_button.pos.x + button_size.x * button_sizes[1].x,
                                            canvas_size.y - padding.y - button_size.y)
+        # endregion
 
+        # region Player list and game settings containers
         self.player_list_container.pos = padding + Vert(0, button_size.y + padding.y)
 
         self.game_settings_container.pos = self.game_select.pos + Vert(0, self.game_select.size.y + padding.y)
         self.game_settings_container.size = \
             Vert(button_size.x, self.game_start_button.pos.y - self.game_settings_container.pos.y - padding.y)
+        # endregion
 
+        # region Chat box
         self.chat_container.pos = self.player_list_container.pos
         self.chat_container.size = \
             Vert(button_size.x, self.leave_button.pos.y - self.chat_container.pos.y - padding.y)
         self.chat_text_input.size = Vert(
             self.chat_container.size.x, min(self.chat_container.size.y * 0.15, self.chat_container.size.x * 0.25))
         self.chat_text_input.pos = Vert(0, self.chat_container.size.y - self.chat_text_input.size.y)
+        self.chat_text.pos = self.chat_text_input.pos
+        self.chat_text.size = self.chat_container.size - Vert(0, self.chat_text_input.size.y)
+        self.chat_text.font_size = 18 * min(canvas_scale.x, canvas_scale.y)
+        # TODO: Padding for chat text should be proportional to font_size
+        # endregion
 
+        # region Text font sizes
         if self.game_select_text.text:
             self.game_select_text.font_size = \
                 min(self.game_select_text_container.size.x * 0.9 / self.game_select_text.size_per_font_size.x,
@@ -930,6 +947,7 @@ class LobbyRoom(Menu):
         self.leave_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.75, canvas_scale.y)
         self.toggle_private_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.5, canvas_scale.y)
         self.toggle_chat_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.6, canvas_scale.y)
+        # endregion
 
         return canvas_size, canvas_scale, padding, base_button_height, button_size
 
