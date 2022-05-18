@@ -3,7 +3,7 @@ import socket
 import _thread
 import pickle
 from typing import Sequence
-from shared_assets import Messages, port, LobbyInfo
+from shared_assets import Messages, port, LobbyInfo, max_chat_messages
 
 # TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
 
@@ -23,6 +23,7 @@ class Lobby:
 
         self.game_id = None
         self.max_players = 10
+        self.chat_messages: list[str] = []
 
         self._private = private
         # self.password = None
@@ -76,7 +77,7 @@ class Lobby:
         self.send_lobby_info_to_members()
         send_lobbies_to_each_client()
 
-    def get_lobby_info(self, include_in_lobby_info=True):
+    def get_lobby_info(self, include_in_lobby_info=True, include_chat=False):
         parameters = {
             "lobby_id": self.lobby_id,
             "lobby_title": self._title,
@@ -88,16 +89,20 @@ class Lobby:
         if include_in_lobby_info:
             parameters["private"] = self._private
             parameters["game_settings"] = None
+        if include_chat:
+            parameters["chat"] = self.chat_messages
 
         return LobbyInfo(**parameters)
 
-    def send_lobby_info_to_members(self, players_to_ignore: ConnectedClient | Sequence[ConnectedClient] = None):
+    def send_lobby_info_to_members(self,
+                                   players_to_ignore: ConnectedClient | Sequence[ConnectedClient] = None,
+                                   include_chat: bool = False):
         if not isinstance(players_to_ignore, Sequence):
             players_to_ignore = [players_to_ignore]
         for member in self.player_clients:
             if member in players_to_ignore:
                 continue
-            server.send(member, Messages.LobbyInfoMessage(self.get_lobby_info(True)))
+            server.send(member, Messages.LobbyInfoMessage(self.get_lobby_info(True, include_chat)))
 
 class ConnectedClient:
     def __init__(self, client_id, conn, address, username=None):
@@ -191,7 +196,7 @@ def listen_to_client(client: ConnectedClient):
             client.username = message.username
             lobby.player_clients.append(client)
             send_lobbies_to_each_client()
-            lobby.send_lobby_info_to_members()
+            lobby.send_lobby_info_to_members(include_chat=True)
 
         elif message.type == Messages.DisconnectMessage.type:
             break
@@ -217,6 +222,19 @@ def listen_to_client(client: ConnectedClient):
 
         elif message.type == Messages.LobbyInfoRequest.type:
             server.send(client, Messages.LobbyInfoMessage(client.lobby_in.get_lobby_info()))
+
+        elif message.type == Messages.NewChatMessage.type:
+            CHAT_FORMAT = "<{}> {}"
+            chat_message = CHAT_FORMAT.format(client.username, message.message)
+
+            client.lobby_in.chat_messages.append(chat_message)
+
+            if len(client.lobby_in.chat_messages) > max_chat_messages:
+                client.lobby_in.chat_messages = \
+                    client.lobby_in.chat_messages[len(client.lobby_in.chat_messages) - max_chat_messages:]
+
+            for member in client.lobby_in.player_clients:
+                server.send(member, Messages.NewChatMessage(chat_message))
 
     print(f"Disconnected from {client.address}")
 

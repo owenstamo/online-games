@@ -1,6 +1,7 @@
 from __future__ import annotations
+import time
 import pygame
-from shared_assets import LobbyInfo, game_info, Messages
+from shared_assets import LobbyInfo, game_info, Messages, max_chat_messages
 from abc import ABC, abstractmethod
 import copy
 from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboardEventHandler
@@ -9,13 +10,16 @@ from utilities import Colors, Vert
 import _thread
 import random
 
+# TODO: All chat messages must be sent to client when client joins. When sending new chat messages, only send the new
+#  ones. They may only be added to the chat after being sent back to the client who sent them.
+
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
 pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
 
-username = ""
+username: str = ""
 max_username_length = 18
 max_lobby_name_length = 30
 default_lobby_title = "New Lobby"
@@ -102,6 +106,8 @@ class Menu(ABC):
 class TitleScreenMenu(Menu):
 
     def __init__(self):
+        global username
+
         super().__init__()
 
         def element_on_mouse_up(element, *_):
@@ -118,7 +124,8 @@ class TitleScreenMenu(Menu):
 
                 potential_username = self.username_text_field.text
                 if len(potential_username) == 0 and (default_username := get_default_username()) is not None:
-                    potential_username = default_username
+                    potential_username = self.username_text_field.text = default_username
+                    self.username_text_field.has_been_selected_yet = True
 
                 if len(potential_username) >= 4:
                     username = potential_username
@@ -134,9 +141,9 @@ class TitleScreenMenu(Menu):
         self.element_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
         self.button_list = [Gui.TextInput(
-            col=self.text_input_default_color, valid_chars=Gui.TextInput.USERNAME_CHARS,
+            text=username, col=self.text_input_default_color,
             empty_text="Username", max_text_length=max_username_length, horizontal_align="CENTER",
-            **self.element_mouse_functions
+            valid_chars=Gui.TextInput.USERNAME_CHARS, **self.element_mouse_functions
         )]
 
         for title in ["Multiplayer", "Options", "Exit"]:
@@ -682,7 +689,6 @@ class LobbyRoom(Menu):
     button_selected_color = (170,) * 3
     text_grayed_out_color = (100,) * 3
     connected_player_type = ConnectedPlayer
-    CHAT_FORMAT = "<{}> {}"
 
     def __init__(self, old_room: LobbyRoom | None = None):
         super().__init__()
@@ -735,8 +741,12 @@ class LobbyRoom(Menu):
                     covered_element.active = not self.chat_container.active
 
         def chat_on_key_input(keycode):
-            if keycode == pygame.K_RETURN and self.chat_text_input.text:
-                self.chat_text.text += [self.CHAT_FORMAT.format(username, self.chat_text_input.text)]
+            if keycode == pygame.K_RETURN and self.chat_text_input.text and \
+                    time.time() - self.time_of_last_message >= self.spam_delay:
+                self.time_of_last_message = time.time()
+
+                network.send(Messages.NewChatMessage(self.chat_text_input.text))
+
                 self.chat_text_input.text = ""
 
         self.element_mouse_functions = {
@@ -746,6 +756,8 @@ class LobbyRoom(Menu):
             "on_mouse_not_over": [element_on_mouse_not_over]
         }
         # endregion
+
+        # TODO: It'll make the code longer, but I could directly take the gui elements from the old_room, instead of reinitializing each one
 
         # region Initialize gui elements
         # Containers for player list and game settings
@@ -777,18 +789,28 @@ class LobbyRoom(Menu):
         self.lobby_title_text: Gui.Text | Gui.TextInput | None = None
 
         # Chat element
-        self.chat_container = Gui.Rect(col=(190,) * 3, active=False)
-        self.elements_covered_by_chat_container = [self.player_list_container]
-        self.chat_text_input, self.chat_text = self.chat_container.add_element([
-            Gui.TextInput(empty_text="Enter message...", max_text_length=100, **self.element_mouse_functions,
-                          on_key_input=chat_on_key_input),
-            Gui.Paragraph(text_align=["BOTTOM", "LEFT"])
-        ])
+        self.chat_text = self.chat_text_input = self.chat_container = None
+
+        if old_room:
+            self.chat_container = old_room.chat_container
+            self.elements_covered_by_chat_container = [self.player_list_container]
+            self.chat_text_input, self.chat_text = old_room.chat_text_input, old_room.chat_text
+        else:
+            self.chat_container = Gui.Rect(col=(190,) * 3, active=False)
+            self.elements_covered_by_chat_container = [self.player_list_container]
+            self.chat_text_input, self.chat_text = self.chat_container.add_element([
+                Gui.TextInput(empty_text="Enter message...", max_text_length=100, **self.element_mouse_functions,
+                              on_key_input=chat_on_key_input),
+                Gui.Paragraph(text_align=["BOTTOM", "LEFT"])
+            ])
 
         self.gui.add_element([self.player_list_container, self.game_settings_container, self.game_select,
                               self.game_start_button, self.leave_button, self.toggle_private_button,
                               self.toggle_chat_button])
         # endregion
+
+        self.time_of_last_message = 0
+        self.spam_delay = 0.1
 
         self.private = old_room.private if old_room else False
         self._host_id: int | None = old_room.host_id if old_room else None
@@ -807,6 +829,8 @@ class LobbyRoom(Menu):
             self.private = lobby_info.private
         if self.lobby_title_text and self.lobby_title_text.text != lobby_info.lobby_title:
             self.lobby_title_text.text = lobby_info.lobby_title
+        if lobby_info.chat:
+            self.chat_text.text = lobby_info.chat
 
         # Setting self.host_id will change the lobby gui if doing so will change this member's status, but
         #  set_player_list must be called before so that the new lobby gui's player list is correct
@@ -1282,6 +1306,12 @@ def message_listener():
                 Menus.menu_active.set_lobby_info(message.lobby_info)
         if message.type == Messages.KickedFromLobbyMessage.type:
             Menus.set_active_menu(Menus.multiplayer_menu)
+        if message.type == Messages.NewChatMessage.type:
+            if isinstance(Menus.menu_active, LobbyRoom):
+                Menus.menu_active.chat_text.text += [message.message]
+                if len(Menus.menu_active.chat_text.text) > max_chat_messages:
+                    Menus.menu_active.chat_text.text = \
+                        Menus.menu_active.chat_text.text[len(Menus.menu_active.chat_text.text) - max_chat_messages:]
 
 
 keyboard_event_handler = GuiKeyboardEventHandler()

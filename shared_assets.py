@@ -32,6 +32,7 @@ class LobbyInfo:
                  game_id=None,
                  max_players: int | None = None,
                  private: int | None = None,
+                 chat: list[str] | None = None,
                  game_settings=None):
         self.lobby_id = lobby_id
         self.lobby_title = lobby_title
@@ -40,6 +41,7 @@ class LobbyInfo:
         self.players = players
         self.max_players = max_players
         self.private = private
+        self.chat = chat
         self.game_settings = game_settings
 
 class Messages:
@@ -140,6 +142,12 @@ class Messages:
         def __init__(self, client_id: int):
             self.client_id = client_id
 
+    class NewChatMessage(Message):
+        type = "chat_message"
+
+        def __init__(self, message):
+            self.message = message
+
 class GameInfo:
     def __init__(self, title, image):
         self.title = title
@@ -150,6 +158,7 @@ class GameIds:
     pong = "pong"
 
 
+max_chat_messages = 50
 game_info = {
     None: GameInfo("No Game Selected", "*insert_blank_image_here*"),
     GameIds.snake: GameInfo("Snake", "*insert_snake_image_here*"),
