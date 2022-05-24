@@ -170,13 +170,14 @@ class Game:
     # Should I make settings save when a game is changed then changed back? How should they be stored? A settings class?
     class Settings:
         # "setting_name": ("InputTypes.INPUT_TYPE", default_value)
-        set_settings_list = {
-            "max_players": (InputTypes.NUMBER_INPUT, 10)
+        settings_visual_list = {
+            "max_players": ("Max Players:", InputTypes.NUMBER_INPUT, 10)
         }
+        """Dictionary in format: {"setting_name": (setting_text, InputTypes.INPUT_TYPE, default_value)}"""
 
         def __init__(self):
             self.settings = {
-                setting_name: setting_data[1] for setting_name, setting_data in self.set_settings_list.items()
+                setting_name: setting_data[1] for setting_name, setting_data in self.settings_visual_list.items()
             }
 
         def set_setting(self, setting_name, new_value):
@@ -198,9 +199,9 @@ class Game:
 class SnakeGame(Game):
     class SnakeSettings(Game.Settings):
         set_settings_list = {
-            **Game.Settings.set_settings_list,
-            "board_width": (InputTypes.TEXT_INPUT, 15),
-            "board_height": (InputTypes.TEXT_INPUT, 15)
+            **Game.Settings.settings_visual_list,
+            "board_width": ("Width of Board:", InputTypes.TEXT_INPUT, 15),
+            "board_height": ("Height of Board:", InputTypes.TEXT_INPUT, 15)
         }
 
     game_id = "snake"
