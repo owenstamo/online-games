@@ -3,9 +3,10 @@ import socket
 import _thread
 import pickle
 from typing import Sequence
-from shared_assets import Messages, port, LobbyInfo, max_chat_messages
+from shared_assets import Messages, port, LobbyInfo, max_chat_messages, game_info, Game
 
 # TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
+# TODO: Capitalize constant variables
 
 lobbies: dict[int, Lobby] = {}
 
@@ -21,7 +22,7 @@ class Lobby:
         self._host_client: ConnectedClient = host
         self.player_clients: list[ConnectedClient] = [host]
 
-        self.game_id = None
+        self._game_selected = Game()
         self.max_players = 10
         self.chat_messages: list[str] = []
 
@@ -59,6 +60,16 @@ class Lobby:
         self.send_lobby_info_to_members(self._host_client)
         send_lobbies_to_each_client()
 
+    @property
+    def game_selected(self):
+        return self._game_selected
+
+    @game_selected.setter
+    def game_selected(self, value):
+        self._game_selected = value
+        self.send_lobby_info_to_members(self._host_client)
+        send_lobbies_to_each_client()
+
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
             if client_in_lobby is player:
@@ -83,7 +94,7 @@ class Lobby:
             "lobby_title": self._title,
             "host": (self._host_client.username, self._host_client.client_id),
             "players": [(client.username, client.client_id) for client in self.player_clients],
-            "game_id": self.game_id,
+            "game_id": self._game_selected.game_id,
             "max_players": self.max_players
         }
         if include_in_lobby_info:
@@ -214,6 +225,11 @@ def listen_to_client(client: ConnectedClient):
 
             if message.host_id != message.unchanged:
                 client.lobby_in.host_client = clients_connected[message.host_id]
+
+            if message.game_id != message.unchanged:
+                # TODO: Maybe the client and server shouldn't both have their own instances of Game running at the same time?
+                #  Should there be a server-side game class and a client-side game class? They'd both have to store the settings.
+                client.lobby_in.game_selected = game_info[message.game_id]()
 
         elif message.type == Messages.KickPlayerFromLobbyMessage.type:
             kicked_player = clients_connected[message.client_id]

@@ -10,6 +10,7 @@ import copy
 # TODO: Make immutable immutable verts good (like a child of vert or something pls)
 # TODO: Add gui elements you can scroll in (I'm sorry future me)
 #        Or just don't. That's an equally valid thing to do.
+# TODO: Capitalize constant variables
 
 def get_list_of_input(inp: any) -> list:
     """

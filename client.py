@@ -1,7 +1,7 @@
 from __future__ import annotations
 import time
 import pygame
-from shared_assets import LobbyInfo, game_info, Messages, max_chat_messages
+from shared_assets import LobbyInfo, game_info, Messages, max_chat_messages, selectable_games, Game
 from abc import ABC, abstractmethod
 import copy
 from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboardEventHandler
@@ -10,8 +10,13 @@ from utilities import Colors, Vert
 import _thread
 import random
 
+# Lock canvas size when in game with non-variable canvas size
+# In the Game class, specify the canvas size / if it's variable
+# Make Game class an abstractmethod, individual games inherit from it. Stores settings, etc.
+
 # TODO: All chat messages must be sent to client when client joins. When sending new chat messages, only send the new
 #  ones. They may only be added to the chat after being sent back to the client who sent them.
+# TODO: Capitalize constant variables
 
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
@@ -815,6 +820,7 @@ class LobbyRoom(Menu):
         self.private = old_room.private if old_room else False
         self._host_id: int | None = old_room.host_id if old_room else None
         self.player_list: list[LobbyRoom.ConnectedPlayer] = []
+        self._game_selected = Game()
 
     @property
     def host_id(self):
@@ -829,8 +835,11 @@ class LobbyRoom(Menu):
             self.private = lobby_info.private
         if self.lobby_title_text and self.lobby_title_text.text != lobby_info.lobby_title:
             self.lobby_title_text.text = lobby_info.lobby_title
+        if self._game_selected.game_id != lobby_info.game_id:
+            self.game_selected = game_info[lobby_info.game_id]()
         if lobby_info.chat:
             self.chat_text.text = lobby_info.chat
+
 
         # Setting self.host_id will change the lobby gui if doing so will change this member's status, but
         #  set_player_list must be called before so that the new lobby gui's player list is correct
@@ -885,6 +894,17 @@ class LobbyRoom(Menu):
     def private(self, value):
         self._private = value
 
+    @property
+    def game_selected(self):
+        return self._game_selected
+
+    @game_selected.setter
+    def game_selected(self, value):
+        self._game_selected = value
+        self.game_select_text.text = value.title
+        self.resize_game_select_text()
+        # self.game_image =
+
     def resize_player_list_elements(self):
         if len(self.player_list) == 0:
             return
@@ -906,6 +926,12 @@ class LobbyRoom(Menu):
                 player.status_text_element.font_size = \
                     min(player.list_gui_element.size.x * 0.45 / player.status_text_element.size_per_font_size.x,
                         player.list_gui_element.size.y * 0.3 / player.status_text_element.size_per_font_size.y)
+
+    def resize_game_select_text(self):
+        if self.game_select_text.text:
+            self.game_select_text.font_size = \
+                min(self.game_select_text_container.size.x * 0.9 / self.game_select_text.size_per_font_size.x,
+                    self.game_select_text_container.size.y * 0.75 / self.game_select_text.size_per_font_size.y)
 
     def resize_elements(self):
         canvas_size = Vert(canvas.get_size())
@@ -963,10 +989,7 @@ class LobbyRoom(Menu):
         # endregion
 
         # region Text font sizes
-        if self.game_select_text.text:
-            self.game_select_text.font_size = \
-                min(self.game_select_text_container.size.x * 0.9 / self.game_select_text.size_per_font_size.x,
-                    self.game_select_text_container.size.y * 0.75 / self.game_select_text.size_per_font_size.y)
+        self.resize_game_select_text()
         self.game_start_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x, canvas_scale.y)
         self.leave_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.75, canvas_scale.y)
         self.toggle_private_button_text.font_size = base_button_height * 0.75 * min(canvas_scale.x * 0.5, canvas_scale.y)
@@ -1064,6 +1087,12 @@ class HostLobbyRoom(LobbyRoom):
                 self.private = not self.private
                 network.send(Messages.ChangeLobbySettingsMessage(private=self.private))
                 # self.player_selected = None
+            elif element is self.game_select:
+                self.game_select_dropdown.active = not self.game_select_dropdown.active
+            elif element in (element_containers := [game_element[0] for game_element in self.game_elements]):
+                self.game_select_dropdown.active = False
+                self.game_selected = self.game_elements[element_containers.index(element)][4]
+                network.send(Messages.ChangeLobbySettingsMessage(game_id=self.game_selected.game_id))
             # elif element is self.game_start_button:
             #     self.player_selected = None
 
@@ -1102,6 +1131,25 @@ class HostLobbyRoom(LobbyRoom):
         self.lobby_title_text = self.lobby_title
 
         self.game_select_text.text = "Select Game"
+        self.game_select_dropdown = Gui.Rect(active=False)
+        self.game_elements: list[tuple[Gui.Rect, Gui.Rect, Gui.BoundingContainer, Gui.Text, Game]] = []
+        """game_elements is a list of tuples in the form tuple(container, game_image, text_container, text, game)"""
+
+        for selectable_game in selectable_games:
+            container = Gui.Rect(
+                col=self.button_default_color,
+                **self.element_mouse_functions
+            )
+            game_image, text_container = \
+                container.add_element([Gui.Rect(ignored_by_mouse=True), Gui.BoundingContainer()])
+            text = text_container.add_element(Gui.Text(
+                text=selectable_game.title,
+                text_align=["CENTER", "CENTER"],
+                **self.new_text_parameters
+            ))
+
+            self.game_elements.append((container, game_image, text_container, text, selectable_game))
+            self.game_select_dropdown.add_element(container)
 
         self.kick_player_button, self.promote_player_button = [
             Gui.Rect(col=self.button_grayed_out_color, **player_action_element_mouse_functions),
@@ -1114,7 +1162,7 @@ class HostLobbyRoom(LobbyRoom):
         self.game_start_button_text.text = "Start Game"
 
         self.gui.add_element([self.lobby_title, self.kick_player_button,
-                              self.promote_player_button, self.chat_container])
+                              self.promote_player_button, self.chat_container, self.game_select_dropdown])
 
         self.elements_covered_by_chat_container.extend([self.promote_player_button, self.kick_player_button])
         # endregion
@@ -1199,6 +1247,26 @@ class HostLobbyRoom(LobbyRoom):
 
         self.kick_player_button_text.font_size = base_button_height * 0.75 * 0.75 * min(canvas_scale.x * 0.7, canvas_scale.y)
         self.promote_player_button_text.font_size = base_button_height * 0.75 * 0.75 * min(canvas_scale.x * 0.6, canvas_scale.y)
+
+        max_dropdown_size = self.game_start_button.pos.y + self.game_start_button.size.y - \
+                            (self.game_select.pos.y + self.game_select.size.y)
+        game_element_height = min(max_dropdown_size / len(self.player_list),
+                                  self.player_list_container.size.x * 0.2)
+        self.game_select_dropdown.pos = self.game_select.pos + Vert(0, self.game_select.size.y - 1)
+        self.game_select_dropdown.size = Vert(self.game_select.size.x, len(self.game_elements) * game_element_height)
+
+        for i, game_element in enumerate(self.game_elements):
+            container, game_image, text_container, text, _ = game_element
+            container.size = Vert(self.game_select_dropdown.size.x, game_element_height + 1)
+            container.pos = Vert(0, i * game_element_height)
+
+            game_image.size = Vert(container.size.y - 1, container.size.y)
+            text_container.pos = Vert(game_image.size.x, 0)
+            text_container.size = container.size - Vert(game_image.size.x, 0)
+
+            if text:
+                text.font_size = min(container.size.x * 0.75 / text.size_per_font_size.x,
+                                     container.size.y * 0.75 / text.size_per_font_size.y)
 
         super().after_element_resize()
 

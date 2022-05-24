@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+
 port = 5555
 
 class Player:
@@ -113,10 +115,12 @@ class Messages:
         type = "change_lobby_settings"
         unchanged = "unchanged"
 
-        def __init__(self, lobby_title=unchanged, private: bool = unchanged, host_id: int = unchanged):
+        def __init__(self, lobby_title: str = unchanged, private: bool = unchanged, host_id: int = unchanged,
+                     game_id: str = unchanged):
             self.lobby_title = lobby_title
             self.private = private
             self.host_id = host_id
+            self.game_id = game_id
 
     class LobbyInfoMessage(Message):
         type = "lobby_info"
@@ -153,14 +157,68 @@ class GameInfo:
         self.title = title
         self.image = image
 
-class GameIds:
-    snake = "snake"
-    pong = "pong"
+
+class InputTypes:
+    # Subject to change. Placeholder enum.
+    TEXT_INPUT = "text_input"
+    NUMBER_INPUT = "number_input"
+    TRUE_FALSE_SWITCH = "true_false_switch"
+    ON_OFF_SWITCH = "on_off_switch"
+    BUTTON = "button"
+
+class Game:
+    # Should I make settings save when a game is changed then changed back? How should they be stored? A settings class?
+    class Settings:
+        # "setting_name": ("InputTypes.INPUT_TYPE", default_value)
+        set_settings_list = {
+            "max_players": (InputTypes.NUMBER_INPUT, 10)
+        }
+
+        def __init__(self):
+            self.settings = {
+                setting_name: setting_data[1] for setting_name, setting_data in self.set_settings_list.items()
+            }
+
+        def set_setting(self, setting_name, new_value):
+            self.settings[setting_name] = new_value
+
+    game_id: str | None = None
+    title: str = "No Game Selected"
+    window_size: tuple[int, int] | None = None
+    image: None = None
+
+    def __init__(self):
+        self.settings = self.Settings()
+
+    def ready_to_start(self, players_connected):
+        _, _ = self, players_connected
+        return False
+
+
+class SnakeGame(Game):
+    class SnakeSettings(Game.Settings):
+        set_settings_list = {
+            **Game.Settings.set_settings_list,
+            "board_width": (InputTypes.TEXT_INPUT, 15),
+            "board_height": (InputTypes.TEXT_INPUT, 15)
+        }
+
+    game_id = "snake"
+    title = "Snake"
+    window_size = 1
+    image = None
+
+    def __init__(self):
+        super().__init__()
+
+    def ready_to_start(self, players_connected):
+        return players_connected == 2
 
 
 max_chat_messages = 50
+# TODO: vvv This name is not right
 game_info = {
-    None: GameInfo("No Game Selected", "*insert_blank_image_here*"),
-    GameIds.snake: GameInfo("Snake", "*insert_snake_image_here*"),
-    GameIds.pong: GameInfo("Pong", "*insert_pong_image_here*")
+    None: Game,
+    SnakeGame.game_id: SnakeGame
 }
+selectable_games = list(game_info.values())
