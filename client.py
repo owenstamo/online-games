@@ -24,6 +24,7 @@ canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
 pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
+network: Network | None = None
 
 username: str = ""
 max_username_length = 18
@@ -108,6 +109,37 @@ class Menu(ABC):
     @abstractmethod
     def resize_elements(self):
         ...
+
+class LoadingMenu(Menu):
+    def __init__(self):
+        super().__init__()
+
+        def cycle_ellipsis(element, _):
+            if time.time() - self.last_ellipsis_change > self.ellipsis_speed:
+                self.last_ellipsis_change = time.time()
+                self.ellipsis_num = (self.ellipsis_num + 1) % 4
+                element.text = self.connecting_to_server_text + "." * self.ellipsis_num
+
+        self.last_ellipsis_change = time.time()
+        self.ellipsis_speed = 0.5
+        self.ellipsis_num = 0
+        self.connecting_to_server_text = "Connecting to Server"
+        self.text = self.gui.add_element(Gui.Text(
+            self.connecting_to_server_text,
+            on_draw_before=cycle_ellipsis
+        ))
+        self.trying_again_text = self.gui.add_element(Gui.Text(
+            "Could not connect to server, trying again...", active=False
+        ))
+
+    def resize_elements(self):
+        canvas_size = Vert(canvas.get_size())
+        canvas_scale = canvas_size / Vert(600, 400)
+        self.text.font_size = 50 * min(canvas_scale.x, canvas_scale.y)
+        self.text.pos = canvas_size * Vert(0.5, 0.46)
+
+        self.trying_again_text.font_size = 25 * min(canvas_scale.x, canvas_scale.y)
+        self.trying_again_text.pos = canvas_size * Vert(0.5, 0.56)
 
 class TitleScreenMenu(Menu):
 
@@ -1355,6 +1387,7 @@ class Menus:
 
         cls.menu_active.resize_elements()
 
+    loading_menu = LoadingMenu()
     title_screen_menu = TitleScreenMenu()
     options_menu = OptionsMenu()
     multiplayer_menu = MultiplayerMenu()
@@ -1364,7 +1397,7 @@ class Menus:
     menu_active: Menu | None = None
 
 
-Menus.set_active_menu(Menus.title_screen_menu)
+Menus.set_active_menu(Menus.loading_menu)
 
 def message_listener():
     while True:
@@ -1392,6 +1425,9 @@ mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 def on_frame():
     canvas.fill(Colors.light_gray)
 
+    if isinstance(Menus.menu_active, LoadingMenu) and network:
+        Menus.set_active_menu(Menus.title_screen_menu)
+
     if Menus.menu_active:
         Menus.menu_active.gui.draw(canvas)
 
@@ -1413,10 +1449,21 @@ def main():
         clock.tick(60)
         pygame.display.flip()
 
-    network.send(Messages.DisconnectMessage())
+    if network:
+        network.send(Messages.DisconnectMessage())
+
+def initialize_network():
+    def on_server_not_found():
+        Menus.loading_menu.trying_again_text.active = True
+
+    def on_server_disconnect():
+        Menus.set_active_menu(Menus.loading_menu)
+
+    global network
+    network = Network(on_server_not_found, on_server_disconnect)
+    message_listener()
 
 
 if __name__ == "__main__":
-    network = Network()
-    _thread.start_new_thread(message_listener, ())
+    _thread.start_new_thread(initialize_network, ())
     main()

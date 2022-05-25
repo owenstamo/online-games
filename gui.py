@@ -83,7 +83,7 @@ class Gui:
         def __init__(self, pos: ImmutableVert,
                      on_draw_before: Sequence[Callable] | Callable | None = None,
                      on_draw_after: Sequence[Callable] | Callable | None = None,
-                     ignore_bounding_box: bool = False, ignored_by_mouse: bool = False, **_):
+                     ignore_bounding_box: bool = False, ignored_by_mouse: bool = False, active: bool = True, **_):
             """
             A base gui element to provides basic framework to child classes.
 
@@ -93,7 +93,7 @@ class Gui:
             :param ignore_bounding_box: Whether to ignore this element's bounding box when making calculations. Does not ignore any potential children's bounding boxes.
             """
             self._pos: ImmutableVert = pos
-            self.active: bool = True
+            self.active: bool = active
             self.on_draw_before: list[Callable] = get_list_of_input(on_draw_before)
 
             self.on_draw_after: list[Callable] = get_list_of_input(on_draw_after)
@@ -194,7 +194,7 @@ class Gui:
     class ContainerElement(GuiElement):
         def __init__(self, pos: ImmutableVert = Vert(0, 0),
                      contents: Gui.GuiElement | Sequence[Gui.GuiElement] | None = None,
-                     active: bool = True, **kwargs):
+                     **kwargs):
             """
             A group that contains a list of Gui Elements. Can be disabled or moved, which affects all elements contained.
 
@@ -203,7 +203,6 @@ class Gui:
             :param active: Whether to draw this group and its contents when the draw function is called.
             """
             super().__init__(pos, **kwargs)
-            self.active: bool = active
             self.parent: Gui.ContainerElement | None = None
             # Bounding box is relative to position
             self.bounding_box: Gui.BoundingBox | None = None
