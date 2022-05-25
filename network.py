@@ -19,7 +19,7 @@ class Network:
                 self.client.connect(self.address)
                 # TODO: Or do you do context stuff here ^^
                 break
-            except TimeoutError:
+            except ConnectionRefusedError:
                 print("Could not find server, trying again...")
                 # When this happens
         connected_message = self.recv()

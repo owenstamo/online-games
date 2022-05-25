@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import time
 from utilities import ImmutableVert, Vert, Colors
-from typing import Sequence, Tuple, Callable
+from typing import Sequence, Callable
 import pygame
 import copy
 
@@ -102,7 +102,7 @@ class Gui:
             self._ignore_bounding_box: bool = ignore_bounding_box
             self.ignored_by_mouse: bool = ignored_by_mouse
 
-        def draw(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
+        def draw(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
             if self.active or force_draw:
                 for func in self.on_draw_before:
                     func(self, self.bounding_box)
@@ -112,7 +112,7 @@ class Gui:
                 for func in self.on_draw_after:
                     func(self, self.bounding_box)
 
-        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
             pass
 
         def mouse_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0), force_check: bool = False):
@@ -293,7 +293,7 @@ class Gui:
                         return element
             return None
 
-        def draw(self, canvas: pygame.surface, parent_absolute_pos=Vert(0, 0), force_draw: bool = False):
+        def draw(self, canvas: pygame.Surface, parent_absolute_pos=Vert(0, 0), force_draw: bool = False):
             super().draw(canvas, parent_absolute_pos, force_draw)
             if self.active:
                 for element in self._contents:
@@ -432,8 +432,8 @@ class Gui:
         #         self.mouse_is_over = False
 
     class Shape:
-        def __init__(self, col: Tuple[int, int, int], stroke_weight: int = 1,
-                     stroke_col: Tuple[int, int, int] = Colors.black, no_fill: bool = False, **_):
+        def __init__(self, col: tuple[int, int, int], stroke_weight: int = 1,
+                     stroke_col: tuple[int, int, int] = Colors.black, no_fill: bool = False, **_):
             """
             A base shape gui class that adds a shape framework to child classes which contains variables specific to drawing.
 
@@ -442,8 +442,8 @@ class Gui:
             :param stroke_col: The color of the outline of this shape.
             :param no_fill: Whether or not to draw the inside color of this shape.
             """
-            self.col: Tuple[int, int, int] = col
-            self.stroke_col: Tuple[int, int, int] = stroke_col
+            self.col: tuple[int, int, int] = col
+            self.stroke_col: tuple[int, int, int] = stroke_col
             self.stroke_weight: int = stroke_weight
             self.no_fill: bool = no_fill
 
@@ -452,7 +452,7 @@ class Gui:
         # TODO: Don't take immutable vert as an input
         def __init__(self, pos: ImmutableVert = Vert(0, 0),
                            size: ImmutableVert = Vert(0, 0),
-                           col: Tuple[int, int, int] = (255, 255, 255), **kwargs):
+                           col: tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
             A gui element that can be drawn and interacted with as a square. A subclass of ContainerElement, Shape, and MouseInteractable.
 
@@ -465,7 +465,7 @@ class Gui:
             Gui.Shape.__init__(self, col=col, **kwargs)
             Gui.MouseInteractable.__init__(self, **kwargs)
 
-        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
             if not self.no_fill:
                 pygame.draw.rect(canvas, self.col, (self._pos + parent_absolute_pos).list + self._size.list)
             if self.stroke_weight > 0:
@@ -493,10 +493,70 @@ class Gui:
         def bounding_box_ignoring_children(self):
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
+    class Image(Rect):
+        def __init__(self, pos: ImmutableVert = Vert(0, 0),
+                           image: pygame.Surface = None,
+                           size: ImmutableVert = None,
+                           stroke_weight: int = 0,
+                           stroke_col: tuple[int, int, int] = Colors.black, **kwargs):
+            """
+            A gui element that can be drawn and interacted with as a square. A subclass of ContainerElement, Shape, and MouseInteractable.
+
+            :param pos: Top left corner of this rectangle.
+            :param size: A vertex storing the width and height of this rectangle. Leave None to set to image size.
+            :param image: The image this element draws.
+            """
+            self._image = None
+            self._size: ImmutableVert = size if size else (Vert(image.get_size()) if image else Vert(0, 0))
+            Gui.ContainerElement.__init__(self, pos=pos, **kwargs)
+            Gui.MouseInteractable.__init__(self, **kwargs)
+            self.unscaled_image = image
+            self.image = image
+            self.stroke_weight = stroke_weight
+            self.stroke_col = stroke_col
+
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+            if self._image:
+                canvas.blit(self._image, (self._pos + parent_absolute_pos).list)
+            if self.stroke_weight > 0:
+                pygame.draw.rect(canvas, self.stroke_col, (self._pos + parent_absolute_pos).list + self._size.list,
+                                 self.stroke_weight)
+
+        def mouse_over_element(self, mouse_pos: Vert):
+            return self._pos.x < mouse_pos.x < self._pos.x + self._size.x and \
+                   self._pos.y < mouse_pos.y < self._pos.y + self._size.y
+
+        @property
+        def size(self):
+            return self._size
+
+        @size.setter
+        def size(self, value):
+            if not isinstance(value, ImmutableVert) or value.len != 2:
+                raise ValueError(f"Input size ({value}) must be Vert of length 2")
+            prev_value = self._size
+            self._size = ImmutableVert(value)
+            if prev_value != self._size and self._image:
+                self._image = pygame.transform.scale(self.unscaled_image, self.size.list)
+
+        @property
+        def image(self):
+            return self._image
+
+        @image.setter
+        def image(self, value):
+            self.unscaled_image = self._image = value
+            if value and value.get_size() != self._size.list:
+                self._image = pygame.transform.scale(self._image, self.size.list)
+
+        @property
+        def bounding_box_ignoring_children(self):
+            return Gui.BoundingBox(Vert(0, 0), self._size)
+
     class Circle(ContainerElement, Shape, MouseInteractable):
         def __init__(self, pos: Vert = ImmutableVert(0, 0),
                            rad: int = 0,
-                           col: Tuple[int, int, int] = (255, 255, 255), **kwargs):
+                           col: tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
             A gui element that can be drawn and interacted with as a circle. A subclass of ContainerElement, Shape, and MouseInteractable
 
@@ -509,7 +569,7 @@ class Gui:
             Gui.Shape.__init__(self, col, **kwargs)
             Gui.MouseInteractable.__init__(self, **kwargs)
 
-        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
             if not self.no_fill:
                 pygame.draw.circle(canvas, self.col, (self._pos + parent_absolute_pos).list, self._rad)
             if self.stroke_weight > 0:
@@ -537,7 +597,7 @@ class Gui:
         HEIGHT_ADJUSTMENT = 0.05
 
         def __init__(self, text: str = "", pos: ImmutableVert = ImmutableVert(0, 0), font_size: int = 0,
-                     font: str = "calibri", col: Tuple[int, int, int] = (0, 0, 0),
+                     font: str = "calibri", col: tuple[int, int, int] = (0, 0, 0),
                      text_align: Sequence[str, str] = ("CENTER", "CENTER"),
                      antialias: bool = True, ignore_bounding_box=True, adjust_height=True, **kwargs):
             """
@@ -681,7 +741,7 @@ class Gui:
             if prev_value != self._text_align:
                 self.calculate_pos()
 
-        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
             canvas.blit(self.rendered_font, self._draw_pos + parent_absolute_pos)
 
         @property
@@ -694,7 +754,7 @@ class Gui:
         #  Maybe also make some option to delete text elements that are out of bounds? (or something) actually maybe not idrk
         #     Or make a cap for how many lines can be stored or whatever. like something big.
 
-        # Also maybe make TextInput allow Paragraphs? That might be rly hard tho
+        # Also, maybe make TextInput allow Paragraphs? That might be rly hard tho
 
         def __init__(self, text: list[str] = None, pos=Vert(0, 0), size=Vert(0, 0), line_spacing: int = 0, **kwargs):
             self.size = size
@@ -805,7 +865,7 @@ class Gui:
             super().create_font_object()
             self.text = self.text
 
-        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
             line_offset = 0
 
             for i, rendered_font_line in enumerate(self.rendered_font):
@@ -827,7 +887,7 @@ class Gui:
         USERNAME_CHARS = ALPHABET + NUMBERS + "_"
         WHOLE_KEYBOARD = tuple(SHIFTED_CHARS.keys()) + tuple(SHIFTED_CHARS.values()) + (" ",)
 
-        def draw_element(self, canvas: pygame.surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
             estimated_default_size = self.text_element.size_per_font_size * self.default_font_size
             bounding_box_size = self.bounding_box.size - Vert(self.text_padding, 0) * 2
 

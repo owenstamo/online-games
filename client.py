@@ -9,6 +9,7 @@ from network import Network
 from utilities import Colors, Vert
 import _thread
 import random
+from typing import Type
 
 # Lock canvas size when in game with non-variable canvas size
 # In the Game class, specify the canvas size / if it's variable
@@ -252,27 +253,20 @@ class MultiplayerMenu(Menu):
                                  get_auto_center_function(align=["RIGHT", "CENTER"],
                                                           offset_scaled_by_parent_height=Vert(-0.1, 0.275))
                                  ]
-            self.list_gui_element.add_element([
-                container := Gui.BoundingContainer(),
-                img := Gui.Rect(col=(200,) * 3, ignored_by_mouse=True)
+
+            self.text_container, self.game_image = self.list_gui_element.add_element([
+                Gui.BoundingContainer(),
+                Gui.Image(image=game_info[lobby_info.game_id].image, stroke_weight=1, ignored_by_mouse=True)
             ])
 
-            container.add_element([
-                title := Gui.Text(text_align=["LEFT", "CENTER"],
-                                  on_draw_before=before_draw_funcs[0]),
-                game_title := Gui.Text(text_align=["LEFT", "CENTER"],
-                                       on_draw_before=before_draw_funcs[1]),
-                count := Gui.Text(text_align=["RIGHT", "CENTER"],
-                                  on_draw_before=before_draw_funcs[2]),
-                host := Gui.Text(text_align=["RIGHT", "CENTER"],
-                                  on_draw_before=before_draw_funcs[3])
+            self.title_element, self.game_title_element, self.player_count_element, self.host_element = self.text_container.add_element([
+                Gui.Text(text_align=["LEFT", "CENTER"], on_draw_before=before_draw_funcs[0]),
+                Gui.Text(text_align=["LEFT", "CENTER"], on_draw_before=before_draw_funcs[1]),
+                Gui.Text(text_align=["RIGHT", "CENTER"], on_draw_before=before_draw_funcs[2]),
+                Gui.Text(text_align=["RIGHT", "CENTER"], on_draw_before=before_draw_funcs[3])
             ])
 
             self.parent_menu = parent_menu
-
-            self.text_container, self.game_image = container, img
-            self.title_element, self.game_title_element, self.host_element, self.player_count_element = \
-                title, game_title, host, count
             self.info_gui_element = Gui.BoundingContainer()
 
             self._lobby_info: LobbyInfo = LobbyInfo(lobby_info.lobby_id)
@@ -334,8 +328,8 @@ class MultiplayerMenu(Menu):
                 return
             self._lobby_info.game_id = value
 
-            # TODO: self.game_image = game_info[value.game_id].image
             self.game_title_element.text = game_info[value].title
+            self.game_image.image = game_info[value].image
 
         @property
         def player_count(self):
@@ -422,7 +416,7 @@ class MultiplayerMenu(Menu):
         # endregion
 
         # region Lobby info contents initialization
-        self.game_image = Gui.Rect(col=(220,) * 3)
+        self.game_image = Gui.Image(stroke_weight=1)
 
         # A thin wrapper just inside lobby_info that lets the user easily disable the contents of lobby_info
         self.lobby_info_inside_wrapper = Gui.ContainerElement(active=False)
@@ -469,6 +463,7 @@ class MultiplayerMenu(Menu):
         self.game_title.text = f"Game: {game_info[lobby.game_id].title}"
         self.player_list_title.text = f"Players: " + (f"{lobby.player_count}/{lobby.max_players}" if
                                                       lobby.max_players is not None else f"{lobby.player_count}")
+        self.game_image.image = game_info[lobby.game_id].image
 
         if self.raw_player_list_displayed != lobby.player_names:
             self.raw_player_list_displayed = lobby.player_names
@@ -551,7 +546,7 @@ class MultiplayerMenu(Menu):
 
             if lobby.title_element.text:
                 lobby.title_element.font_size = \
-                    min(lobby.text_container.size.x * 0.75 / lobby.title_element.size_per_font_size.x,
+                    min(lobby.text_container.size.x * 0.7 / lobby.title_element.size_per_font_size.x,
                         lobby.text_container.size.y * 0.5 / lobby.title_element.size_per_font_size.y)
             if lobby.game_title_element.text:
                 lobby.game_title_element.font_size = \
@@ -763,6 +758,7 @@ class LobbyRoom(Menu):
         # endregion
 
         # TODO: It'll make the code longer, but I could directly take the gui elements from the old_room, instead of reinitializing each one
+        self._game_selected = old_room._game_selected if old_room else Game()
 
         # region Initialize gui elements
         # Containers for player list and game settings
@@ -772,8 +768,10 @@ class LobbyRoom(Menu):
         # Game selection/selected element, as well as the game image and text
         self.game_select = Gui.Rect(col=self.button_default_color)
         self.game_image, self.game_select_text_container = self.game_select.add_element([
-            Gui.Rect(col=(200,) * 3, ignored_by_mouse=True), Gui.BoundingContainer()])
-        self.game_select_text = self.game_select_text_container.add_element(Gui.Text(**self.new_text_parameters))
+            Gui.Image(image=self._game_selected.image, ignored_by_mouse=True, stroke_weight=1), Gui.BoundingContainer()
+        ])
+        self.game_select_text = self.game_select_text_container.add_element(Gui.Text(
+            text=self._game_selected.title, **self.new_text_parameters))
 
         # Game start button / waiting element
         self.game_start_button = Gui.Rect(col=self.button_default_color)
@@ -794,8 +792,6 @@ class LobbyRoom(Menu):
         self.lobby_title_text: Gui.Text | Gui.TextInput | None = None
 
         # Chat element
-        self.chat_text = self.chat_text_input = self.chat_container = None
-
         if old_room:
             self.chat_container = old_room.chat_container
             self.elements_covered_by_chat_container = [self.player_list_container]
@@ -820,7 +816,6 @@ class LobbyRoom(Menu):
         self.private = old_room.private if old_room else False
         self._host_id: int | None = old_room.host_id if old_room else None
         self.player_list: list[LobbyRoom.ConnectedPlayer] = []
-        self._game_selected = Game()
 
     @property
     def host_id(self):
@@ -903,7 +898,7 @@ class LobbyRoom(Menu):
         self._game_selected = value
         self.game_select_text.text = value.title
         self.resize_game_select_text()
-        # self.game_image =
+        self.game_image.image = value.image
 
     def resize_player_list_elements(self):
         if len(self.player_list) == 0:
@@ -1091,13 +1086,22 @@ class HostLobbyRoom(LobbyRoom):
                 self.game_select_dropdown.active = not self.game_select_dropdown.active
             elif element in (element_containers := [game_element[0] for game_element in self.game_elements]):
                 self.game_select_dropdown.active = False
-                self.game_selected = self.game_elements[element_containers.index(element)][4]
-                network.send(Messages.ChangeLobbySettingsMessage(game_id=self.game_selected.game_id))
+                previous_game_selected = self.game_selected
+                self.game_selected = self.game_elements[element_containers.index(element)][4]()
+                if type(self.game_selected) != type(previous_game_selected):
+                    network.send(Messages.ChangeLobbySettingsMessage(game_id=self.game_selected.game_id))
             # elif element is self.game_start_button:
             #     self.player_selected = None
 
         def on_text_input_deselect(*_):
-            network.send(Messages.ChangeLobbySettingsMessage(lobby_title=self.lobby_title.text))
+            # TODO: Make sure user can't spam this
+            if self.last_sent_lobby_title != self.lobby_title.text:
+                self.last_sent_lobby_title = self.lobby_title.text
+                network.send(Messages.ChangeLobbySettingsMessage(lobby_title=self.lobby_title.text))
+
+        def chat_on_key_input(keycode):
+            if keycode == pygame.K_RETURN:
+                on_text_input_deselect()
 
         player_action_element_mouse_functions = {
             "on_mouse_down": [player_action_element_on_mouse_down],
@@ -1127,12 +1131,12 @@ class HostLobbyRoom(LobbyRoom):
                                          valid_chars=Gui.TextInput.USERNAME_CHARS + " ",
                                          max_text_length=max_lobby_name_length, on_deselect=on_text_input_deselect,
                                          clear_text_on_first_select=clear_text_on_first_select,
-                                         horizontal_align="CENTER", **self.element_mouse_functions)
+                                         on_key_input=chat_on_key_input, horizontal_align="CENTER",
+                                         **self.element_mouse_functions)
         self.lobby_title_text = self.lobby_title
 
-        self.game_select_text.text = "Select Game"
         self.game_select_dropdown = Gui.Rect(active=False)
-        self.game_elements: list[tuple[Gui.Rect, Gui.Rect, Gui.BoundingContainer, Gui.Text, Game]] = []
+        self.game_elements: list[tuple[Gui.Rect, Gui.Rect, Gui.BoundingContainer, Gui.Text, Type[Game]]] = []
         """game_elements is a list of tuples in the form tuple(container, game_image, text_container, text, game)"""
 
         for selectable_game in selectable_games:
@@ -1140,8 +1144,9 @@ class HostLobbyRoom(LobbyRoom):
                 col=self.button_default_color,
                 **self.element_mouse_functions
             )
-            game_image, text_container = \
-                container.add_element([Gui.Rect(ignored_by_mouse=True), Gui.BoundingContainer()])
+            game_image, text_container = container.add_element([
+                Gui.Image(image=selectable_game.image, stroke_weight=1, ignored_by_mouse=True), Gui.BoundingContainer()
+            ])
             text = text_container.add_element(Gui.Text(
                 text=selectable_game.title,
                 text_align=["CENTER", "CENTER"],
@@ -1169,6 +1174,7 @@ class HostLobbyRoom(LobbyRoom):
 
         self._player_selected: HostLobbyRoom.ConnectedPlayerSelectable | None = None
         self.player_selected = None
+        self.last_sent_lobby_title = self.lobby_title_text.text
 
         self.set_player_list(old_room.player_list if old_room else [(username, network.client_id)])
         self.player_action_buttons_grayed = True
@@ -1281,8 +1287,6 @@ class MemberLobbyRoom(LobbyRoom):
         self.lobby_title_text = self.lobby_title.add_element(
             Gui.Text(old_room.lobby_title_text.text if old_room else "", **self.new_text_parameters))
 
-        # TODO: Set game selected if old_room is not None
-        self.game_select_text.text = "No Game Selected"
         self.game_start_button_text.text = "Waiting..."
 
         self.gui.add_element([self.lobby_title, self.chat_container])

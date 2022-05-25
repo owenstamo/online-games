@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+import pygame
 
 port = 5555
 
@@ -186,18 +186,18 @@ class Game:
     game_id: str | None = None
     title: str = "No Game Selected"
     window_size: tuple[int, int] | None = None
-    image: None = None
+    image: pygame.Surface = pygame.image.load("assets/none_icon.png")
 
     def __init__(self):
         self.settings = self.Settings()
 
     def ready_to_start(self, players_connected):
-        _, _ = self, players_connected
+        # Call this whenever players_connected changes, or any settings change.
+        # Returns true if the game can be started, otherwise returns false or a string containing the reason it can not be started.
         return False
 
-
 class SnakeGame(Game):
-    class SnakeSettings(Game.Settings):
+    class Settings(Game.Settings):
         set_settings_list = {
             **Game.Settings.settings_visual_list,
             "board_width": ("Width of Board:", InputTypes.TEXT_INPUT, 15),
@@ -206,20 +206,44 @@ class SnakeGame(Game):
 
     game_id = "snake"
     title = "Snake"
-    window_size = 1
-    image = None
-
-    def __init__(self):
-        super().__init__()
+    window_size = (512, 512)
+    image: pygame.Surface = pygame.image.load("assets/snake_icon.png")
 
     def ready_to_start(self, players_connected):
-        return players_connected == 2
+        if players_connected < 2:
+            return "Not enough players"
+        elif players_connected > 2:
+            return "Max players: 2"
+        else:
+            return True
+
+class PongGame(Game):
+    class Settings(Game.Settings):
+        set_settings_list = {
+            **Game.Settings.settings_visual_list,
+            "board_width": ("Width of Board:", InputTypes.TEXT_INPUT, 15),
+            "board_height": ("Height of Board:", InputTypes.TEXT_INPUT, 15)
+        }
+
+    game_id = "pong"
+    title = "Pong"
+    window_size = (512, 512)
+    image: pygame.Surface = pygame.image.load("assets/pong_icon.png")
+
+    def ready_to_start(self, players_connected):
+        if players_connected < 2:
+            return "Not enough players"
+        elif players_connected > 2:
+            return "Max players: 2"
+        else:
+            return True
+
+
 
 
 max_chat_messages = 50
+
+
+selectable_games = [Game, SnakeGame, PongGame]
 # TODO: vvv This name is not right
-game_info = {
-    None: Game,
-    SnakeGame.game_id: SnakeGame
-}
-selectable_games = list(game_info.values())
+game_info = {game.game_id: game for game in selectable_games}
