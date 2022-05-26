@@ -1,44 +1,72 @@
 import socket
 import shared_assets
 import pickle
+import _thread
 
 class Network:
-    def __init__(self, on_server_not_found=None, on_server_disconnect):
+    def __init__(self, on_server_not_found=None, on_server_disconnect=None, on_server_connect=None):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # TODO: Something about context shit here ^^
         self.server = "localhost"
         self.port = shared_assets.port
         self.address = (self.server, self.port)
+        self.on_server_connect = on_server_connect
+        self.on_server_disconnect = on_server_disconnect
+        self.on_server_not_found = on_server_not_found
 
-        self.client_id = self.connect(on_server_not_found)
+        self.client_id = None
+        _thread.start_new_thread(self.connect, ())
 
-    def connect(self, on_server_not_found=None):
+    def connect(self):
         print("Connecting to server...")
         while True:
             try:
                 self.client.connect(self.address)
-                # TODO: Or do you do context stuff here ^^
                 break
             except ConnectionRefusedError:
                 print("Could not find server, trying again...")
-                if on_server_not_found:
-                    on_server_not_found()
+                if self.on_server_not_found:
+                    self.on_server_not_found()
+            except OSError:
+                print("Unable to reconnect to client. Creating a new client.")
+                self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
         connected_message = self.recv()
         print(f"Connected with address {connected_message.address} and client_id {connected_message.client_id}!")
-        return connected_message.client_id
+        self.client_id = connected_message.client_id
+        if self.on_server_connect:
+            self.on_server_connect()
 
     def send(self, message):
         outgoing_message = pickle.dumps(message)
-        self.client.send(outgoing_message)
-        print(f"  [S] Sent {message.style} of type {message.type} to the server")
+        try:
+            self.client.send(outgoing_message)
+            print(f"  [S] Sent {message.style} of type {message.type} to the server")
+            return True
+        except ConnectionResetError:
+            print(f"Could not find server to send {message.style} of type {message.type}. Assuming server is disconnected.")
+            if self.on_server_disconnect:
+                self.on_server_disconnect()
+            return False
+        except OSError:
+            return False
 
     def recv(self):
-        incoming_message = self.client.recv(4096)
+        try:
+            incoming_message = self.client.recv(4096)
+        except ConnectionResetError as err:
+            print("Could not find server to receive message from. Assuming server is disconnected.")
+            if self.on_server_disconnect:
+                self.on_server_disconnect()
+            return shared_assets.Messages.ErrorMessage(err)
+        except OSError as err:
+            return shared_assets.Messages.ErrorMessage(err)
+
         try:
             message = pickle.loads(incoming_message)
-        except EOFError as e:
-            print(f"Received EOFError when loading server message: {e}")
-            message = shared_assets.Messages.ErrorMessage(e)
+        except EOFError as err:
+            print(f"Received EOFError when loading server message: {err}")
+            return shared_assets.Messages.ErrorMessage(err)
 
         print(f"  [R] Received {message.style} of type {message.type} from server.")
         return message

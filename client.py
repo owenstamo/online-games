@@ -25,6 +25,7 @@ pygame.display.set_caption("Online games and all that jazz.")
 clock = pygame.time.Clock()
 canvas_active = True
 network: Network | None = None
+listening_for_messages = False
 
 username: str = ""
 max_username_length = 18
@@ -110,8 +111,8 @@ class Menu(ABC):
     def resize_elements(self):
         ...
 
-class LoadingMenu(Menu):
-    def __init__(self):
+class ConnectingMenu(Menu):
+    def __init__(self, menu_being_loaded: Menu):
         super().__init__()
 
         def cycle_ellipsis(element, _):
@@ -120,6 +121,7 @@ class LoadingMenu(Menu):
                 self.ellipsis_num = (self.ellipsis_num + 1) % 4
                 element.text = self.connecting_to_server_text + "." * self.ellipsis_num
 
+        self.menu_being_loaded = menu_being_loaded
         self.last_ellipsis_change = time.time()
         self.ellipsis_speed = 0.5
         self.ellipsis_num = 0
@@ -131,6 +133,9 @@ class LoadingMenu(Menu):
         self.trying_again_text = self.gui.add_element(Gui.Text(
             "Could not connect to server, trying again...", active=False
         ))
+
+    def load_next_menu(self):
+        Menus.set_active_menu(self.menu_being_loaded)
 
     def resize_elements(self):
         canvas_size = Vert(canvas.get_size())
@@ -1382,12 +1387,15 @@ class Menus:
     def set_active_menu(cls, value):
         cls.menu_active = value
 
-        if isinstance(cls.menu_active, MultiplayerMenu):
-            network.send(Messages.LobbyListRequest())
+        if isinstance(cls.menu_active, MultiplayerMenu) and network:
+            if network.send(Messages.LobbyListRequest()):
+                if not listening_for_messages:
+                    _thread.start_new_thread(message_listener, ())
+            else:
+                cls.menu_active = ConnectingMenu(cls.menu_active)
 
         cls.menu_active.resize_elements()
 
-    loading_menu = LoadingMenu()
     title_screen_menu = TitleScreenMenu()
     options_menu = OptionsMenu()
     multiplayer_menu = MultiplayerMenu()
@@ -1397,12 +1405,20 @@ class Menus:
     menu_active: Menu | None = None
 
 
-Menus.set_active_menu(Menus.loading_menu)
+Menus.set_active_menu(Menus.title_screen_menu)
 
 def message_listener():
+    global listening_for_messages
+    listening_for_messages = True
+
     while True:
+
         message = network.recv()
 
+        if message.type == Messages.ErrorMessage.type:
+            if isinstance(message.error, ConnectionResetError):
+                listening_for_messages = False
+                return
         if message.type == Messages.LobbyListMessage.type:
             if isinstance(Menus.menu_active, MultiplayerMenu):
                 Menus.menu_active.set_lobbies(message.lobbies)
@@ -1423,10 +1439,13 @@ keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 def on_frame():
+    # TODO: Maybe make the loading screen save the menu that it's loading, and automatically switch to that menu once connected to server
+    #  Also rename it to something more accurate. Maybe connecting screen?
+
     canvas.fill(Colors.light_gray)
 
-    if isinstance(Menus.menu_active, LoadingMenu) and network:
-        Menus.set_active_menu(Menus.title_screen_menu)
+    # if isinstance(Menus.menu_active, LoadingMenu) and network:
+    #     Menus.set_active_menu(Menus.title_screen_menu)
 
     if Menus.menu_active:
         Menus.menu_active.gui.draw(canvas)
@@ -1452,18 +1471,19 @@ def main():
     if network:
         network.send(Messages.DisconnectMessage())
 
-def initialize_network():
-    def on_server_not_found():
-        Menus.loading_menu.trying_again_text.active = True
+def on_server_not_found():
+    if isinstance(Menus.menu_active, ConnectingMenu):
+        Menus.menu_active.trying_again_text.active = True
 
-    def on_server_disconnect():
-        Menus.set_active_menu(Menus.loading_menu)
+def on_server_disconnect():
+    Menus.set_active_menu(Menus.title_screen_menu)
+    network.connect()
 
-    global network
-    network = Network(on_server_not_found, on_server_disconnect)
-    message_listener()
+def on_server_connect():
+    if isinstance(Menus.menu_active, ConnectingMenu):
+        Menus.menu_active.load_next_menu()
 
 
 if __name__ == "__main__":
-    _thread.start_new_thread(initialize_network, ())
+    network = Network(on_server_not_found, on_server_disconnect, on_server_connect)
     main()
