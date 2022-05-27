@@ -33,6 +33,7 @@ max_lobby_name_length = 30
 default_lobby_title = "New Lobby"
 
 def get_default_username():
+    """Returns a randomly generated username to be used if the user does not input a username."""
     nouns = ["thought", "database", "college", "cigarette", "actor", "ratio", "guest", "economics", "coffee",
              "judgment", "sympathy", "professor", "knowledge", "tongue", "police", "library", "drawer", "man", "thing",
              "art", "moment", "church", "news", "guitar", "reading", "tooth", "flight", "child",
@@ -112,8 +113,13 @@ class Menu(ABC):
         ...
 
 class ConnectingMenu(Menu):
-    def __init__(self, menu_being_loaded: Menu):
+    def __init__(self, menu_being_loaded: Menu, menu_coming_from: Menu = None):
         super().__init__()
+
+        def on_button_up(*_):
+            Menus.set_active_menu(self.menu_coming_from)
+
+        self.element_mouse_functions["on_mouse_up"].append(on_button_up)
 
         def cycle_ellipsis(element, _):
             if time.time() - self.last_ellipsis_change > self.ellipsis_speed:
@@ -121,14 +127,23 @@ class ConnectingMenu(Menu):
                 self.ellipsis_num = (self.ellipsis_num + 1) % 4
                 element.text = self.connecting_to_server_text + "." * self.ellipsis_num
 
+        self.menu_coming_from = menu_coming_from
         self.menu_being_loaded = menu_being_loaded
+
         self.last_ellipsis_change = time.time()
         self.ellipsis_speed = 0.5
         self.ellipsis_num = 0
+
+        self.back_button = self.gui.add_element(Gui.Rect(
+            active=bool(menu_coming_from), col=self.button_default_color, **self.element_mouse_functions
+        ))
+        self.back_button_text = self.back_button.add_element(Gui.Text(
+            "Back", **self.new_text_parameters
+        ))
+
         self.connecting_to_server_text = "Connecting to Server"
         self.text = self.gui.add_element(Gui.Text(
-            self.connecting_to_server_text,
-            on_draw_before=cycle_ellipsis
+            self.connecting_to_server_text, on_draw_before=cycle_ellipsis
         ))
         self.trying_again_text = self.gui.add_element(Gui.Text(
             "Could not connect to server, trying again...", active=False
@@ -141,10 +156,15 @@ class ConnectingMenu(Menu):
         canvas_size = Vert(canvas.get_size())
         canvas_scale = canvas_size / Vert(600, 400)
         self.text.font_size = 50 * min(canvas_scale.x, canvas_scale.y)
-        self.text.pos = canvas_size * Vert(0.5, 0.46)
+        self.text.pos = canvas_size * Vert(0.5, 0.46 if self.trying_again_text.active else 0.5)
 
         self.trying_again_text.font_size = 25 * min(canvas_scale.x, canvas_scale.y)
         self.trying_again_text.pos = canvas_size * Vert(0.5, 0.56)
+
+        padding = Vert(1, 1) * min(canvas_size.x, canvas_size.y) / 30
+        self.back_button.pos = padding
+        self.back_button.size = Vert(90, 40) * canvas_scale
+        self.back_button_text.font_size = 25 * min(canvas_scale.x, canvas_scale.y)
 
 class TitleScreenMenu(Menu):
 
@@ -1385,6 +1405,7 @@ class MemberLobbyRoom(LobbyRoom):
 class Menus:
     @classmethod
     def set_active_menu(cls, value):
+        p_menu_active = cls.menu_active
         cls.menu_active = value
 
         if isinstance(cls.menu_active, MultiplayerMenu) and network:
@@ -1392,7 +1413,7 @@ class Menus:
                 if not listening_for_messages:
                     _thread.start_new_thread(message_listener, ())
             else:
-                cls.menu_active = ConnectingMenu(cls.menu_active)
+                cls.menu_active = ConnectingMenu(cls.menu_active, p_menu_active)
 
         cls.menu_active.resize_elements()
 
@@ -1408,6 +1429,7 @@ class Menus:
 Menus.set_active_menu(Menus.title_screen_menu)
 
 def message_listener():
+    """Function to listen to and handle incoming messages from the server."""
     global listening_for_messages
     listening_for_messages = True
 
@@ -1439,13 +1461,9 @@ keyboard_event_handler = GuiKeyboardEventHandler()
 mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 def on_frame():
-    # TODO: Maybe make the loading screen save the menu that it's loading, and automatically switch to that menu once connected to server
-    #  Also rename it to something more accurate. Maybe connecting screen?
+    """Function to be called every frame. Handles drawing and per-frame functionality."""
 
     canvas.fill(Colors.light_gray)
-
-    # if isinstance(Menus.menu_active, LoadingMenu) and network:
-    #     Menus.set_active_menu(Menus.title_screen_menu)
 
     if Menus.menu_active:
         Menus.menu_active.gui.draw(canvas)
@@ -1454,6 +1472,7 @@ def on_frame():
     keyboard_event_handler.main(Menus.menu_active.gui)
 
 def main():
+    """Handles pygame loop and pygame events."""
     global canvas_active
     while canvas_active:
         for event in pygame.event.get():
@@ -1472,18 +1491,23 @@ def main():
         network.send(Messages.DisconnectMessage())
 
 def on_server_not_found():
+    """Function to be called when the network failed to find a server. Sets current loading menu's trying_again_text to active."""
     if isinstance(Menus.menu_active, ConnectingMenu):
         Menus.menu_active.trying_again_text.active = True
+        Menus.menu_active.resize_elements()
 
 def on_server_disconnect():
+    """Function to be called when the network can no longer find a server. Resets the menu to the title screen and attempts to reconnect."""
     Menus.set_active_menu(Menus.title_screen_menu)
-    network.connect()
+    _thread.start_new_thread(network.connect, ())
 
 def on_server_connect():
+    """Function to be called when the network connects to a server. Exits the loading menu."""
     if isinstance(Menus.menu_active, ConnectingMenu):
         Menus.menu_active.load_next_menu()
 
 
 if __name__ == "__main__":
+    # Initialize network class, which automatically connects it to server.
     network = Network(on_server_not_found, on_server_disconnect, on_server_connect)
     main()

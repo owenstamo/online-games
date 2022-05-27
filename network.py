@@ -1,10 +1,14 @@
 import socket
+from typing import Callable
 import shared_assets
 import pickle
 import _thread
 
 class Network:
-    def __init__(self, on_server_not_found=None, on_server_disconnect=None, on_server_connect=None):
+    def __init__(self,
+                 on_server_not_found: Callable = None,
+                 on_server_disconnect: Callable = None,
+                 on_server_connect: Callable = None):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # TODO: Something about context shit here ^^
         self.server = "localhost"
