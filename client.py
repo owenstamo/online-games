@@ -796,6 +796,8 @@ class LobbyRoom(Menu):
                 self.chat_container.active = not self.chat_container.active
                 for covered_element in self.elements_covered_by_chat_container:
                     covered_element.active = not self.chat_container.active
+                if self.chat_container.active:
+                    self.chat_notification.active = False
 
         def chat_on_key_input(keycode):
             if keycode == pygame.K_RETURN and self.chat_text_input.text and \
@@ -849,6 +851,12 @@ class LobbyRoom(Menu):
         self.lobby_title_text: Gui.Text | Gui.TextInput | None = None
 
         # Chat element
+        self.chat_notification = self.toggle_chat_button.add_element(Gui.Circle(
+            col=(255, 0, 0), ignore_bounding_box=True, active=False
+        ))
+        self.chat_notification_inner_circle = self.chat_notification.add_element(Gui.Circle(
+            col=(255,) * 3, ignore_bounding_box=True, stroke_weight=0
+        ))
         if old_room:
             self.chat_container = old_room.chat_container
             self.elements_covered_by_chat_container = [self.player_list_container]
@@ -1017,6 +1025,11 @@ class LobbyRoom(Menu):
                                               canvas_size.y - padding.y - button_size.y)
         self.toggle_chat_button.pos = Vert(self.toggle_private_button.pos.x + button_size.x * button_sizes[1].x,
                                            canvas_size.y - padding.y - button_size.y)
+        # Look, the next line might be confusing as hell, but I swear it works and is exactly what I intended to do.
+        # Min function handles if either axis of canvas_scale gets less than 1/2 for x or 1/1.5 for y.
+        # Max scales element by the scale of the smallest axis only said scale is greater than 1.
+        self.chat_notification.rad = 7 * min(1, canvas_scale.x * 2, canvas_scale.y * 1.5) * max(1, min(canvas_scale.x, canvas_scale.y))
+        self.chat_notification_inner_circle.rad = self.chat_notification.rad * 0.5
         # endregion
 
         # region Player list and game settings containers
@@ -1058,6 +1071,8 @@ class LobbyRoom(Menu):
 #   [S] Sent request of type lobby_list_info_request to the server
 #   [R] Received message of type lobby_list_info from server.
 #   [R] Received message of type lobby_list_info from server.
+# Leaving a server changes the lobby info, meaning that the server sends out new lobby info to everyone.
+# Including person leaving. What if you just don't send a lobby_list_info_request?
 
 class HostLobbyRoom(LobbyRoom):
     class ConnectedPlayerSelectable(LobbyRoom.ConnectedPlayer):
@@ -1455,6 +1470,8 @@ def message_listener():
                 if len(Menus.menu_active.chat_text.text) > max_chat_messages:
                     Menus.menu_active.chat_text.text = \
                         Menus.menu_active.chat_text.text[len(Menus.menu_active.chat_text.text) - max_chat_messages:]
+                if not Menus.menu_active.chat_container.active:
+                    Menus.menu_active.chat_notification.active = True
 
 
 keyboard_event_handler = GuiKeyboardEventHandler()
