@@ -239,10 +239,7 @@ class PongGame(Game):
             return True
 
 
-
-
 max_chat_messages = 50
-
 
 selectable_games = [Game, SnakeGame, PongGame]
 # TODO: vvv This name is not right

@@ -824,6 +824,12 @@ class LobbyRoom(Menu):
         self.player_list_container = Gui.Rect(col=(255,) * 3)
         self.game_settings_container = Gui.Rect(col=(190,) * 3)
 
+        # Game settings
+        self.game_setting_containers = []
+        for i in range(len(self._game_selected.settings)):
+            self.game_setting_containers.append(Gui.BoundingContainer())
+        self.game_settings_container.add_element(self.game_setting_containers)
+
         # Game selection/selected element, as well as the game image and text
         self.game_select = Gui.Rect(col=self.button_default_color)
         self.game_image, self.game_select_text_container = self.game_select.add_element([
@@ -899,7 +905,6 @@ class LobbyRoom(Menu):
             self.game_selected = game_info[lobby_info.game_id]()
         if lobby_info.chat:
             self.chat_text.text = lobby_info.chat
-
 
         # Setting self.host_id will change the lobby gui if doing so will change this member's status, but
         #  set_player_list must be called before so that the new lobby gui's player list is correct
@@ -1038,6 +1043,14 @@ class LobbyRoom(Menu):
         self.game_settings_container.pos = self.game_select.pos + Vert(0, self.game_select.size.y + padding.y)
         self.game_settings_container.size = \
             Vert(button_size.x, self.game_start_button.pos.y - self.game_settings_container.pos.y - padding.y)
+        # endregion
+
+        # region Game settings
+        setting_count = len(self.setting_text)
+        # TODO: Copy over the code from player_list or any other list for this:
+        height_per_setting = self.game_settings_container.size.y / setting_count
+        # for i, setting_text in enumerate(self.setting_text):
+        #     self.setting_text.font_size =
         # endregion
 
         # region Chat box
@@ -1362,6 +1375,14 @@ class MemberLobbyRoom(LobbyRoom):
         self.game_start_button_text.text = "Waiting..."
 
         self.gui.add_element([self.lobby_title, self.chat_container])
+
+        self.setting_text = []
+        i = 0
+        for setting_name, setting_val in self._game_selected.settings:
+            setting_display_name = self._game_selected.Settings.settings_visual_list[setting_name]
+            self.setting_text.append(Gui.Text(f"{setting_display_name} {setting_val}"))
+            self.game_setting_containers[i].add_element(self.setting_text, font_size=10, **self.new_text_parameters)
+            i += 1
         # endregion
 
         if old_room:
@@ -1413,6 +1434,11 @@ class MemberLobbyRoom(LobbyRoom):
         self.player_list_container.size = Vert(button_size.x,
                                                self.leave_button.pos.y - self.player_list_container.pos.y - padding.y)
         self.resize_lobby_title_text()
+
+        # setting_count = len(self.setting_text)
+        # height_per_setting = self.game_settings_container.size.y / setting_count
+        # for i, setting_text in enumerate(self.setting_text):
+        #     self.setting_text.font_size =
 
         super().after_element_resize()
 
