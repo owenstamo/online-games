@@ -7,6 +7,7 @@ from shared_assets import Messages, port, LobbyInfo, max_chat_messages, game_inf
 
 # TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
 # TODO: Capitalize constant variables
+# TODO: Handle errors so the server doesn't die out of nowhere
 
 lobbies: dict[int, Lobby] = {}
 
@@ -67,8 +68,16 @@ class Lobby:
     @game_selected.setter
     def game_selected(self, value):
         self._game_selected = value
+        self.max_players = self._game_selected.settings.settings["max_players"]
         self.send_lobby_info_to_members(self._host_client)
         send_lobbies_to_each_client()
+
+    def set_game_settings(self, new_settings: Game.Settings):
+        self._game_selected.settings = new_settings
+        if "max_players" in new_settings.settings and new_settings.settings["max_players"] != self.max_players:
+            self.max_players = new_settings.settings["max_players"]
+            send_lobbies_to_each_client()
+        self.send_lobby_info_to_members(self._host_client)
 
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
@@ -99,7 +108,7 @@ class Lobby:
         }
         if include_in_lobby_info:
             parameters["private"] = self._private
-            parameters["game_settings"] = None
+            parameters["game_settings"] = self._game_selected.settings
         if include_chat:
             parameters["chat"] = self.chat_messages
 
@@ -150,6 +159,8 @@ class Server:
             print(f"  [S] Sent {message.style} of type {message.type} to address {client.address}")
         except ConnectionResetError:
             print(f"Error: Attempted to send {message.style} of type {message.type} to closed client at address {client.address}. This is likely not an issue.")
+        except ConnectionAbortedError:
+            print(f"Error: Received ConnectionAbortedError when trying to send {message.style} of type {message.type} to client at address {client.address}.")
 
     @staticmethod
     def recv(client):
@@ -170,10 +181,9 @@ def delete_lobby(lobby: Lobby):
     send_lobbies_to_each_client()
 
 def send_lobbies_to_each_client():
-    # print(f"Sending lobbies to: {clients_connected}")
+    lobbies_to_send = [lobby.get_lobby_info(False) for lobby in lobbies.values() if not lobby.private]
     for client in clients_connected.values():
         if client.lobby_in is None:
-            lobbies_to_send = [lobby.get_lobby_info(False) for lobby in lobbies.values() if not lobby.private]
             server.send(client, Messages.LobbyListMessage(lobbies_to_send))
 
 def listen_to_client(client: ConnectedClient):
@@ -230,6 +240,9 @@ def listen_to_client(client: ConnectedClient):
                 # TODO: Maybe the client and server shouldn't both have their own instances of Game running at the same time?
                 #  Should there be a server-side game class and a client-side game class? They'd both have to store the settings.
                 client.lobby_in.game_selected = game_info[message.game_id]()
+
+            if message.game_settings != message.unchanged:
+                client.lobby_in.set_game_settings(message.game_settings)
 
         elif message.type == Messages.KickPlayerFromLobbyMessage.type:
             kicked_player = clients_connected[message.client_id]

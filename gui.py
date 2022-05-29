@@ -6,6 +6,8 @@ from typing import Sequence, Callable
 import pygame
 import copy
 
+# When clicking off of a text_input onto another text_input, it doesn't deselect the first
+
 # Kinda need to figure out the deal with immutable verts vs verts, tuples vs lists, etc.
 # TODO: Make immutable immutable verts good (like a child of vert or something pls)
 # TODO: Add gui elements you can scroll in (I'm sorry future me)
@@ -306,8 +308,7 @@ class Gui:
         def contents(self, value):
             self._contents = []
             if value:
-                for element in get_list_of_input(value):
-                    self.add_element(element)
+                self.add_element(get_list_of_input(value))
             else:
                 # Adding the elements from contents would've already run the reevaluate_bounding_box function
                 self.reevaluate_bounding_box()
@@ -918,6 +919,7 @@ class Gui:
                      size: Vert = Vert(0, 0),
                      text: str = "",
                      valid_chars=WHOLE_KEYBOARD,
+                     valid_input_func: Callable = lambda inp: True,
                      empty_text: str = "",
                      max_text_length: int | None = None,
                      horizontal_align="LEFT",
@@ -954,6 +956,7 @@ class Gui:
             self.size = size
             self.add_element(self.text_element)
             self.valid_chars = valid_chars
+            self.valid_input_func = valid_input_func
 
             self.is_selected = False
 
@@ -986,7 +989,7 @@ class Gui:
                     self.has_been_selected_yet = False
                     self.text_element.text = self.empty_text
                 for on_deselect_func in self.on_deselect:
-                    on_deselect_func(self)
+                    on_deselect_func()
 
         def reset_cursor(self):
             self.cursor_last_toggle = time.perf_counter()
@@ -1016,7 +1019,9 @@ class Gui:
             key = chr(key_code)
             if shift_is_down and key in self.SHIFTED_CHARS:
                 key = self.SHIFTED_CHARS[key]
-            if key in self.valid_chars and len(self.text_element.text) < self.max_text_length:
+            if key in self.valid_chars and \
+                    len(self.text_element.text) < self.max_text_length and \
+                    self.valid_input_func(self.text + key):
                 self.text = self.text + key
                 self.reset_cursor()
 
