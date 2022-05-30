@@ -47,3 +47,8 @@ Lobby menu (as guest):
     - Show game, picture of game, and any extra game info
     - List of all players.
     - Maybe put everything in the same place as in the owner's interface, just settings are unchangeable.
+
+
+
+For making games:
+    - Need a client class, server class, and shared class. Any classes contained within messages sent between server and client must be from shared.

@@ -3,7 +3,8 @@ import socket
 import _thread
 import pickle
 from typing import Sequence
-from shared_assets import Messages, port, LobbyInfo, max_chat_messages, game_info, Game
+import shared_assets
+from shared_assets import Messages, port, max_chat_messages
 
 # TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
 # TODO: Capitalize constant variables
@@ -14,7 +15,7 @@ lobbies: dict[int, Lobby] = {}
 class Lobby:
     available_lobby_id = 0
 
-    def __init__(self, host: ConnectedClient, title: str = "", private: bool = False):
+    def __init__(self, host: ConnectedClient, settings, title: str = "", private: bool = False):
         self.lobby_id = Lobby.available_lobby_id
         Lobby.available_lobby_id += 1
 
@@ -23,7 +24,8 @@ class Lobby:
         self._host_client: ConnectedClient = host
         self.player_clients: list[ConnectedClient] = [host]
 
-        self._game_selected = Game()
+        self._game_selected_id = None
+        self.game_settings = settings
         self.max_players = 10
         self.chat_messages: list[str] = []
 
@@ -61,23 +63,20 @@ class Lobby:
         self.send_lobby_info_to_members(self._host_client)
         send_lobbies_to_each_client()
 
-    @property
-    def game_selected(self):
-        return self._game_selected
+    def set_game_selected_id(self, value, send_to_clients=True):
+        self._game_selected_id = value
+        if send_to_clients:
+            self.send_lobby_info_to_members(self._host_client)
+            send_lobbies_to_each_client()
 
-    @game_selected.setter
-    def game_selected(self, value):
-        self._game_selected = value
-        self.max_players = self._game_selected.settings.settings["max_players"]
-        self.send_lobby_info_to_members(self._host_client)
-        send_lobbies_to_each_client()
-
-    def set_game_settings(self, new_settings: Game.Settings):
-        self._game_selected.settings = new_settings
+    def set_game_settings(self, new_settings, send_to_clients=True):
+        self.game_settings = new_settings
         if "max_players" in new_settings.settings and new_settings.settings["max_players"] != self.max_players:
             self.max_players = new_settings.settings["max_players"]
-            send_lobbies_to_each_client()
-        self.send_lobby_info_to_members(self._host_client)
+            if send_to_clients:
+                send_lobbies_to_each_client()
+        if send_to_clients:
+            self.send_lobby_info_to_members(self._host_client)
 
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
@@ -103,16 +102,16 @@ class Lobby:
             "lobby_title": self._title,
             "host": (self._host_client.username, self._host_client.client_id),
             "players": [(client.username, client.client_id) for client in self.player_clients],
-            "game_id": self._game_selected.game_id,
+            "game_id": self._game_selected_id,
             "max_players": self.max_players
         }
         if include_in_lobby_info:
             parameters["private"] = self._private
-            parameters["game_settings"] = self._game_selected.settings
+            parameters["game_settings"] = self.game_settings
         if include_chat:
             parameters["chat"] = self.chat_messages
 
-        return LobbyInfo(**parameters)
+        return Messages.LobbyInfo(**parameters)
 
     def send_lobby_info_to_members(self,
                                    players_to_ignore: ConnectedClient | Sequence[ConnectedClient] = None,
@@ -199,7 +198,7 @@ def listen_to_client(client: ConnectedClient):
 
         elif message.type == Messages.CreateLobbyMessage.type:
             client.username = message.username
-            new_lobby = Lobby(client, message.lobby_title, message.private)
+            new_lobby = Lobby(client, message.settings, message.lobby_title, message.private)
             lobbies[new_lobby.lobby_id] = client.lobby_in = new_lobby
             send_lobbies_to_each_client()
 
@@ -236,21 +235,19 @@ def listen_to_client(client: ConnectedClient):
             if message.host_id != message.unchanged:
                 client.lobby_in.host_client = clients_connected[message.host_id]
 
+            if message.game_settings != message.unchanged:
+                # Don't send data to clients yet if game_id has also been changed. Wait until it changes as well before sending data.
+                client.lobby_in.set_game_settings(message.game_settings, message.game_id == message.unchanged)
+
             if message.game_id != message.unchanged:
                 # TODO: Maybe the client and server shouldn't both have their own instances of Game running at the same time?
                 #  Should there be a server-side game class and a client-side game class? They'd both have to store the settings.
-                client.lobby_in.game_selected = game_info[message.game_id]()
-
-            if message.game_settings != message.unchanged:
-                client.lobby_in.set_game_settings(message.game_settings)
+                client.lobby_in.set_game_selected_id(message.game_id)
 
         elif message.type == Messages.KickPlayerFromLobbyMessage.type:
             kicked_player = clients_connected[message.client_id]
             kicked_player.lobby_in.remove_player(kicked_player)
             server.send(kicked_player, Messages.KickedFromLobbyMessage())
-
-        elif message.type == Messages.LobbyInfoRequest.type:
-            server.send(client, Messages.LobbyInfoMessage(client.lobby_in.get_lobby_info()))
 
         elif message.type == Messages.NewChatMessage.type:
             CHAT_FORMAT = "<{}> {}"

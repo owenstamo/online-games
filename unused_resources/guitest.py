@@ -1,5 +1,5 @@
-from utilities import Vert
-from gui import Gui, get_auto_center_function, GuiMouseEventHandler
+from client.utilities import Vert
+from server.server import Gui, get_auto_center_function, GuiMouseEventHandler
 import pygame
 
 pygame.init()

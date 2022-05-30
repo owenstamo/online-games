@@ -1101,6 +1101,30 @@ def get_auto_font_size_function(element_under: Gui.GuiElement | None = None,
 
     return auto_font_size
 
+def get_button_functions(default_color, mouse_over_color, mouse_holding_color):
+    def element_on_mouse_over(element):
+        if not any(element.mouse_buttons_holding):
+            element.col = mouse_over_color
+
+    def element_on_mouse_not_over(element):
+        if not any(element.mouse_buttons_holding):
+            element.col = default_color
+
+    def element_on_mouse_down(element, *_):
+        element.col = mouse_holding_color
+
+    def element_on_mouse_up(element, *_):
+        if element.mouse_is_over:
+            element.col = mouse_over_color
+        else:
+            element.col = default_color
+
+    return {
+            "on_mouse_down": [element_on_mouse_down],
+            "on_mouse_up": [element_on_mouse_up],
+            "on_mouse_over": [element_on_mouse_over],
+            "on_mouse_not_over": [element_on_mouse_not_over]
+        }
 
 class InputHandler:
     # The code for MouseEventHandler and KeyboardEventHandler is almost identical, the only difference is how
