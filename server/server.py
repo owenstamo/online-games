@@ -4,7 +4,10 @@ import _thread
 import pickle
 from typing import Sequence
 import shared_assets
-from shared_assets import Messages, port, max_chat_messages, Client
+from shared_assets import GameAssets, Messages, port, max_chat_messages, Client
+from server_assets import GameServer, game_servers_by_id
+
+_ = shared_assets
 
 # TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
 # TODO: Capitalize constant variables
@@ -15,7 +18,7 @@ lobbies: dict[int, Lobby] = {}
 class Lobby:
     available_lobby_id = 0
 
-    def __init__(self, host: ConnectedClient, settings, title: str = "", private: bool = False):
+    def __init__(self, host: ConnectedClient, settings: GameAssets.Settings, title: str = "", private: bool = False):
         self.lobby_id = Lobby.available_lobby_id
         Lobby.available_lobby_id += 1
 
@@ -24,13 +27,16 @@ class Lobby:
         self._host_client: ConnectedClient = host
         self.player_clients: list[ConnectedClient] = [host]
 
-        self._game_selected_id = None
+        self.game_selected_id = None
         self.game_settings = settings
         self.max_players = 10
         self.chat_messages: list[str] = []
 
         self._private = private
         # self.password = None
+
+        self.clients_with_game_initialized: int = 0
+        self.current_game: GameServer | None = None
 
     @property
     def host_client(self):
@@ -64,7 +70,7 @@ class Lobby:
         send_lobbies_to_each_client()
 
     def set_game_selected_id(self, value, send_to_clients=True):
-        self._game_selected_id = value
+        self.game_selected_id = value
         if send_to_clients:
             self.send_lobby_info_to_members(self._host_client)
             send_lobbies_to_each_client()
@@ -91,7 +97,6 @@ class Lobby:
 
         if player is self._host_client:
             self._host_client = self.player_clients[0]
-            # TODO: Change client's gui here ^^
 
         self.send_lobby_info_to_members()
         send_lobbies_to_each_client()
@@ -102,7 +107,7 @@ class Lobby:
             "lobby_title": self._title,
             "host": (self._host_client.username, self._host_client.client_id),
             "players": [(client.username, client.client_id) for client in self.player_clients],
-            "game_id": self._game_selected_id,
+            "game_id": self.game_selected_id,
             "max_players": self.max_players
         }
         if include_in_lobby_info:
@@ -122,6 +127,13 @@ class Lobby:
             if member in players_to_ignore:
                 continue
             server.send(member, Messages.LobbyInfoMessage(self.get_lobby_info(True, include_chat)))
+
+    def start_game(self):
+        self.current_game = game_servers_by_id[self.game_selected_id](server,
+                                                                      self.game_settings,
+                                                                      self.player_clients,
+                                                                      self._host_client)
+        _thread.start_new_thread(self.current_game.call_on_frame, ())
 
 class ConnectedClient(Client):
     """A class representing a client that is connected to the server, including all information necessary for server to communicate with said client."""
@@ -171,7 +183,6 @@ class Server:
         print(f"  [R] Received {message.style} of type {message.type} from address {client.address}")
         return message
 
-
 clients_connected: dict[int, ConnectedClient] = {}
 
 def delete_lobby(lobby: Lobby):
@@ -197,8 +208,8 @@ def listen_to_client(client: ConnectedClient):
             break
 
         if message.type == Messages.GameDataMessage.type:
-            ...
-            # TODO: Store the server being run in the Lobby class, probably
+            if client.lobby_in.current_game:
+                client.lobby_in.current_game.on_data_received(client, message.data)
 
         elif message.type == Messages.LobbyListRequest.type:
             server.send(client, Messages.LobbyListMessage([lobby.get_lobby_info(False) for lobby in lobbies.values()]))
@@ -272,12 +283,27 @@ def listen_to_client(client: ConnectedClient):
         elif message.type == Messages.StartGameStartTimerMessage.type:
             for client_in_lobby in client.lobby_in.player_clients:
                 if client_in_lobby is not client:
-                    server.send(client_in_lobby, Messages.StartGameStartTimer(message.start_time))
+                    server.send(client_in_lobby, Messages.StartGameStartTimerMessage(message.start_time))
 
         elif message.type == Messages.StartGameMessage.type:
             for client_in_lobby in client.lobby_in.player_clients:
-                if client_in_lobby is not client:
-                    server.send(client_in_lobby, Messages.StartGameStartTimer(message.start_time))
+                clients = [Client(connected_client.username, connected_client.client_id)
+                           for connected_client in client.lobby_in.player_clients]
+                host_client = Client(client.lobby_in.host_client.username, client.lobby_in.host_client.client_id)
+
+                server.send(client_in_lobby, Messages.GameStartedMessage(clients,
+                                                                         host_client,
+                                                                         client.lobby_in.game_selected_id))
+            client.lobby_in.clients_with_game_initialized = 0
+
+        elif message.type == Messages.GameInitializedMessage.type:
+            # Once each player's game class has been initialized, they will send this message. Makes sure that the
+            # game server doesn't start running unless it knows all game clients are running and can accept messages.
+            client.lobby_in.clients_with_game_initialized += 1
+            # There's a tiny chance for error if somebody leaves the lobby/crashes before sending in a GameInitializedMessage, but the chance of that happening is miniscule (I hope).
+            # Unless they crash when initializing the game (due to some glitch in the game initialization) (I'm just going to hope that doesn't happen)
+            if client.lobby_in.clients_with_game_initialized >= len(client.lobby_in.player_clients):
+                client.lobby_in.start_game()
 
     print(f"Disconnected from {client.address}")
 

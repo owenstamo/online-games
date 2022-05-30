@@ -69,7 +69,7 @@ class Messages:
     class CreateLobbyMessage(Message):
         type = "create_lobby"
 
-        def __init__(self, username: str, lobby_title: str, settings, private: bool = False):
+        def __init__(self, username: str, lobby_title: str, settings: GameAssets.Settings, private: bool = False):
             self.username = username
             self.lobby_title = lobby_title
             self.settings = settings
@@ -140,8 +140,16 @@ class Messages:
     class StartGameMessage(Message):
         type = "start_game_message"
 
-        def __init__(self, ):
+    class GameStartedMessage(Message):
+        type = "game_started_message"
 
+        def __init__(self, clients, host_client, game_id=None):
+            self.clients = clients
+            self.host_client = host_client
+            self.game_id = game_id
+
+    class GameInitializedMessage(Message):
+        type = "game_initialized_message"
     # endregion
 
     # region Game related messages
@@ -173,6 +181,8 @@ class InputTypeIDs:
     SWITCH_INPUT = "switch_input"
 
 class GameAssets:
+    game_id = None
+
     class Settings:
         # "setting_name": ("InputTypes.INPUT_TYPE", default_value)
         setting_info_list = {
@@ -190,6 +200,8 @@ class GameAssets:
             self.settings[setting_name] = new_value
 
 class SnakeAssets:
+    game_id = "snake"
+
     class Settings(GameAssets.Settings):
         setting_info_list = {
             **GameAssets.Settings.setting_info_list,
@@ -199,6 +211,8 @@ class SnakeAssets:
         }
 
 class PongAssets:
+    game_id = "pong"
+
     class Settings(GameAssets.Settings):
         setting_info_list = {
             **GameAssets.Settings.setting_info_list,

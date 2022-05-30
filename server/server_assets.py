@@ -1,16 +1,37 @@
-from typing import TYPE_CHECKING
+from __future__ import annotations
+from typing import TYPE_CHECKING, Type
+from shared_assets import GameAssets, SnakeAssets, PongAssets
+import time
 
 if TYPE_CHECKING:
     from server import Server, ConnectedClient
 
 class GameServer:
-    def __init__(self, server: Server, clients: list[ConnectedClient], host_client: ConnectedClient):
-        self.server: Server = server
-        self.clients: list[ConnectedClient] = ...
-        self.host_client: ConnectedClient = ...
+    asset_class = GameAssets
+    FPS: int | None = None
+    """Amount of times per second this game server's on_frame() should be called. Leave 0 or None for never."""
 
-    def on_data_received(self, client_from: ConnectedClient, data):
-        ...
+    def __init__(self,
+                 server: Server,
+                 settings: GameAssets.Settings,
+                 clients: list[ConnectedClient],
+                 host_client: ConnectedClient):
+        self.server: Server = server
+        self.settings = settings
+        self.clients: list[ConnectedClient] = clients
+        self.host_client: ConnectedClient = host_client
+
+        self.time_of_last_frame = 0
+        self.seconds_per_frame = 1 / self.FPS if self.FPS else None
+
+    def call_on_frame(self):
+        while self.seconds_per_frame:
+            current_time = time.time()
+            if current_time - self.time_of_last_frame >= 1 / self.FPS:
+                self.on_frame()
+                self.time_of_last_frame = current_time
+
+            time.sleep(self.seconds_per_frame / 5)
 
     def send_data(self, client: ConnectedClient | list[ConnectedClient], data):
         self.server.send(client, data)
@@ -19,11 +40,24 @@ class GameServer:
         for client in self.clients:
             self.send_data(client, data)
 
+    def on_data_received(self, client_from: ConnectedClient, data):
+        ...
+
     def on_frame(self):
         ...
 
+    def on_client_disconnect(self, client):
+        host_left = client is self.host_client
+        self.clients.remove(client)
+        if host_left:
+            self.host_client = self.clients[0]
+
 class SnakeServer(GameServer):
-    ...
+    asset_class = SnakeAssets
 
 class PongServer(GameServer):
-    ...
+    asset_class = PongAssets
+
+
+game_servers: list[Type[GameServer]] = [GameServer, SnakeServer, PongServer]
+game_servers_by_id: dict[str, Type[GameServer]] = {game.asset_class.game_id: game for game in game_servers}

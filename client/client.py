@@ -7,7 +7,7 @@ import _thread
 import random
 from typing import Type
 
-from client_assets import games_by_id, selectable_games, GameData, get_button_functions, InputTypes
+from client_assets import game_datas_by_id, selectable_games, GameData, get_button_functions, InputTypes
 import shared_assets
 from shared_assets import Messages, max_chat_messages, Client
 from games import Game
@@ -15,9 +15,14 @@ from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboard
 from network import Network
 from utilities import Colors, Vert
 
+_ = shared_assets
 # Lock canvas size when in game with non-variable canvas size
 # In the Game class, specify the canvas size / if it's variable
 # Make Game class an abstractmethod, individual games inherit from it. Stores settings, etc.
+
+# TODO: If I restart server with clients connected (in a lobby, maybe), then one client creates a new lobby and changes
+#  the game (to pong), when the next client goes into the multiplayer menu it shows No Game Selected.
+#  it might even happen normally even if you don't restart server with clients connected.
 
 # TODO: All chat messages must be sent to client when client joins. When sending new chat messages, only send the new
 #  ones. They may only be added to the chat after being sent back to the client who sent them.
@@ -294,7 +299,7 @@ class MultiplayerMenu(Menu):
 
             self.text_container, self.game_image = self.list_gui_element.add_element([
                 Gui.BoundingContainer(),
-                Gui.Image(image=games_by_id[lobby_info.game_id].image, stroke_weight=1, ignored_by_mouse=True)
+                Gui.Image(image=game_datas_by_id[lobby_info.game_id].image, stroke_weight=1, ignored_by_mouse=True)
             ])
 
             self.title_element, self.game_title_element, self.player_count_element, self.host_element = self.text_container.add_element([
@@ -362,12 +367,12 @@ class MultiplayerMenu(Menu):
 
         @game_id.setter
         def game_id(self, value):
-            if value == self._lobby_info.game_id and self.game_title_element.text == games_by_id[value].title:
+            if value == self._lobby_info.game_id and self.game_title_element.text == game_datas_by_id[value].title:
                 return
             self._lobby_info.game_id = value
 
-            self.game_title_element.text = games_by_id[value].title
-            self.game_image.image = games_by_id[value].image
+            self.game_title_element.text = game_datas_by_id[value].title
+            self.game_image.image = game_datas_by_id[value].image
 
         @property
         def player_count(self):
@@ -500,10 +505,10 @@ class MultiplayerMenu(Menu):
     def set_lobby_info(self, lobby: ConnectedLobby):
         self.lobby_title.text = lobby.lobby_title
         self.host.text = f"Host: {lobby.host_name}"
-        self.game_title.text = f"Game: {games_by_id[lobby.game_id].title}"
+        self.game_title.text = f"Game: {game_datas_by_id[lobby.game_id].title}"
         self.player_list_title.text = f"Players: " + (f"{lobby.player_count}/{lobby.max_players}" if
                                                       lobby.max_players is not None else f"{lobby.player_count}")
-        self.game_image.image = games_by_id[lobby.game_id].image
+        self.game_image.image = game_datas_by_id[lobby.game_id].image
 
         if self.raw_player_list_displayed != lobby.player_names:
             self.raw_player_list_displayed = lobby.player_names
@@ -775,8 +780,9 @@ class LobbyRoom(Menu):
         }
         # endregion
 
+        self._game_selected: GameData = old_room._game_selected if old_room else GameData()
+
         # TODO: It'll make the code longer, but I could directly take the gui elements from the old_room, instead of reinitializing each one
-        self._game_selected = old_room._game_selected if old_room else GameData()
 
         # region Initialize gui elements
         # Containers for player list and game settings
@@ -883,8 +889,8 @@ class LobbyRoom(Menu):
             self.private = lobby_info.private
         if self.lobby_title_text and self.lobby_title_text.text != lobby_info.lobby_title:
             self.lobby_title_text.text = lobby_info.lobby_title
-        if self._game_selected.game_id != lobby_info.game_id:
-            self.game_selected = games_by_id[lobby_info.game_id]()
+        if self._game_selected.asset_class.game_id != lobby_info.game_id:
+            self.game_selected = game_datas_by_id[lobby_info.game_id]()
         if lobby_info.chat:
             self.chat_text.text = lobby_info.chat
         if lobby_info.game_settings:
@@ -1186,7 +1192,7 @@ class HostLobbyRoom(LobbyRoom):
                 previous_game_selected = self.game_selected
                 self.game_selected = self.game_elements[element_containers.index(element)][4]()
                 if type(self.game_selected) != type(previous_game_selected):
-                    network.send(Messages.ChangeLobbySettingsMessage(game_id=self.game_selected.game_id,
+                    network.send(Messages.ChangeLobbySettingsMessage(game_id=self.game_selected.asset_class.game_id,
                                                                      game_settings=self.game_selected.settings))
 
         def on_text_input_deselect(*_):
@@ -1347,13 +1353,10 @@ class HostLobbyRoom(LobbyRoom):
 
     def update_countdown(self):
         if super().update_countdown():
-            clients = [Client(player.name, player.client_id) for player in self.player_list]
-            host_client = Client(username, network.client_id)
-            GameHandler.start_game(self._game_selected, clients, host_client)
-            # TODO: The game data classes should probably be in shared_assets. Actually maybe not.
-            #  predicament: server should not require stuff like game image. but, i need some way to tell the server which GameServer to start.
-            #  It should be alright, though, to not send the game_id to the other clients as they already have the chosen game saved. Theoretically (since host can't change game after it's started)
+            # clients = [Client(player.name, player.client_id) for player in self.player_list]
+            # host_client = Client(username, network.client_id)
             network.send(Messages.StartGameMessage())
+            # GameHandler.start_game(self._game_selected, clients, host_client)
 
     def set_game_selected(self, value):
         super().set_game_selected(value)
@@ -1641,6 +1644,10 @@ def message_listener():
         elif message.type == Messages.StartGameStartTimerMessage.type:
             if isinstance(Menus.menu_active, LobbyRoom):
                 Menus.menu_active.time_of_start_button_click = message.start_time
+        elif message.type == Messages.GameStartedMessage.type:
+            if isinstance(Menus.menu_active, LobbyRoom):
+                GameHandler.start_game(Menus.menu_active.game_selected, message.clients, message.host_client)
+                network.send(Messages.GameInitializedMessage())
 
 
 keyboard_event_handler = GuiKeyboardEventHandler()

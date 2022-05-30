@@ -8,6 +8,8 @@ import shared_assets
 from shared_assets import InputTypeIDs, GameAssets, SnakeAssets, PongAssets
 from games import Game, SnakeGame, PongGame
 
+_ = shared_assets
+
 # TODO: Move all colors to game_assets file.
 
 class InputTypes:
@@ -131,7 +133,6 @@ class InputTypes:
 
 # Should I rename this to GameInfo? GameData?
 class GameData:
-    game_id: str | None = None
     title: str = "No Game Selected"
     window_size: tuple[int, int] | None = None
     image: pygame.Surface = pygame.image.load("../assets/none_icon.png")
@@ -149,13 +150,12 @@ class GameData:
         return "No game selected"
 
 class SnakeData(GameData):
-    game_id = "snake"
     title = "Snake"
     window_size = (512, 512)
     image: pygame.Surface = pygame.image.load("../assets/snake_icon.png")
 
     game_class = SnakeGame
-    setting_class = SnakeAssets
+    asset_class = SnakeAssets
 
     def ready_to_start(self, players_connected):
         if players_connected < 2:
@@ -166,13 +166,12 @@ class SnakeData(GameData):
             return True
 
 class PongData(GameData):
-    game_id = "pong"
     title = "Pong"
     window_size = (512, 512)
     image: pygame.Surface = pygame.image.load("../assets/pong_icon.png")
 
     game_class = PongGame
-    setting_class = PongAssets
+    asset_class = PongAssets
 
     def ready_to_start(self, players_connected):
         if players_connected > self.settings.settings["max_players"]:
@@ -180,5 +179,7 @@ class PongData(GameData):
         else:
             return True
 
-selectable_games = [GameData, SnakeData, PongData]
-games_by_id = {game.game_id: game for game in selectable_games}
+
+selectable_games: list[Type[GameData]] = [GameData, SnakeData, PongData]
+game_datas_by_id: dict[str, Type[GameData]] = {game.asset_class.game_id: game for game in selectable_games}
+...
