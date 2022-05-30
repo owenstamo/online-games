@@ -775,7 +775,7 @@ class LobbyRoom(Menu):
         # endregion
 
         # TODO: It'll make the code longer, but I could directly take the gui elements from the old_room, instead of reinitializing each one
-        self._game_selected = old_room._game_selected if old_room else Game(network)
+        self._game_selected = old_room._game_selected if old_room else Game()
 
         # region Initialize gui elements
         # Containers for player list and game settings
@@ -1148,6 +1148,9 @@ class HostLobbyRoom(LobbyRoom):
                         network.send(Messages.ChangeLobbySettingsMessage(host_id=self.player_selected.client_id))
                 elif element is self.kick_player_button:
                     network.send(Messages.KickPlayerFromLobbyMessage(self.player_selected.client_id))
+                elif element is self.game_start_button:
+                    ...
+                    # TODO: Add functionality for game start here
 
         def host_element_on_mouse_up(element, *_):
             if element is self.toggle_private_button:
@@ -1159,7 +1162,7 @@ class HostLobbyRoom(LobbyRoom):
             elif element in (element_containers := [game_element[0] for game_element in self.game_elements]):
                 self.game_select_dropdown.active = False
                 previous_game_selected = self.game_selected
-                self.game_selected = self.game_elements[element_containers.index(element)][4](network)
+                self.game_selected = self.game_elements[element_containers.index(element)][4]()
                 if type(self.game_selected) != type(previous_game_selected):
                     network.send(Messages.ChangeLobbySettingsMessage(game_id=self.game_selected.game_id,
                                                                      game_settings=self.game_selected.settings))

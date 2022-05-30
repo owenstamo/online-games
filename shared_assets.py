@@ -133,35 +133,36 @@ class InputTypeIDs:
     NUMBER_INPUT = "number_input"
     SWITCH_INPUT = "switch_input"
 
-class GameSettings:
-    # "setting_name": ("InputTypes.INPUT_TYPE", default_value)
-    setting_info_list = {
-        "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 10, {"min_number": 1, "max_number": 99}),
-        "other_setting": ("Other Setting:", InputTypeIDs.SWITCH_INPUT, False, {})
-    }
-    """Dictionary in format: {"setting_name": (setting_text, InputTypeIDs.INPUT_TYPE, default_value, initialization_arguments)}"""
+class GameAssets:
+    class Settings:
+        # "setting_name": ("InputTypes.INPUT_TYPE", default_value)
+        setting_info_list = {
+            "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 10, {"min_number": 1, "max_number": 99}),
+            "other_setting": ("Other Setting:", InputTypeIDs.SWITCH_INPUT, False, {})
+        }
+        """Dictionary in format: {"setting_name": (setting_text, InputTypeIDs.INPUT_TYPE, default_value, initialization_arguments)}"""
 
-    def __init__(self):
-        self.settings = {
-            setting_name: setting_data[2] for setting_name, setting_data in self.setting_info_list.items()
+        def __init__(self):
+            self.settings = {
+                setting_name: setting_data[2] for setting_name, setting_data in self.setting_info_list.items()
+            }
+
+        def set_setting(self, setting_name, new_value):
+            self.settings[setting_name] = new_value
+
+class SnakeAssets:
+    class Settings(GameAssets.Settings):
+        setting_info_list = {
+            **GameAssets.Settings.setting_info_list,
+            "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 2, "max_number": 2}),
+            "board_width": ("Width of Board:", InputTypeIDs.NUMBER_INPUT, 15, {"min_number": 5, "max_number": 30}),
+            "board_height": ("Height of Board:", InputTypeIDs.NUMBER_INPUT, 15, {"min_number": 5, "max_number": 30})
         }
 
-    def set_setting(self, setting_name, new_value):
-        self.settings[setting_name] = new_value
-
-
-class SnakeSettings(GameSettings):
-    setting_info_list = {
-        **GameSettings.setting_info_list,
-        "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 2, "max_number": 2}),
-        "board_width": ("Width of Board:", InputTypeIDs.NUMBER_INPUT, 15, {"min_number": 5, "max_number": 30}),
-        "board_height": ("Height of Board:", InputTypeIDs.NUMBER_INPUT, 15, {"min_number": 5, "max_number": 30})
-    }
-
-
-class PongSettings(GameSettings):
-    setting_info_list = {
-        **GameSettings.setting_info_list,
-        "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 1, "max_number": 2})
-    }
+class PongAssets:
+    class Settings(GameAssets.Settings):
+        setting_info_list = {
+            **GameAssets.Settings.setting_info_list,
+            "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 1, "max_number": 2})
+        }
 

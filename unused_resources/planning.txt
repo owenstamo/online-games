@@ -52,3 +52,8 @@ Lobby menu (as guest):
 
 For making games:
     - Need a client class, server class, and shared class. Any classes contained within messages sent between server and client must be from shared.
+
+Game:
+GameClient:
+GameSettings:
+GameServer:

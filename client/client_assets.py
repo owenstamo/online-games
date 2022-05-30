@@ -4,9 +4,9 @@ import math
 from gui import Gui, get_button_functions, get_auto_center_function
 from utilities import Vert, constrain
 import shared_assets
-from shared_assets import InputTypeIDs, GameSettings, SnakeSettings, PongSettings
+from shared_assets import InputTypeIDs, GameAssets, SnakeAssets, PongAssets
+from games import GameClient, SnakeClient, PongClient
 
-# TODO: Capitalize constants
 # TODO: Move all colors to game_assets file.
 
 class InputTypes:
@@ -37,7 +37,7 @@ class InputTypes:
         DEFAULT_VALUE = 0
         INPUT_ID = InputTypeIDs.NUMBER_INPUT
         # TODO: Move colors to game_assets for here vvv and in SwitchInput
-        text_input_mouse_functions = get_button_functions((255,) * 3, (245,) * 3, (230,) * 3)
+        TEXT_INPUT_MOUSE_FUNCTIONS = get_button_functions((255,) * 3, (245,) * 3, (230,) * 3)
 
         def constrain_number(self):
             self.value = constrain(self.value, self.min_number, self.max_number)
@@ -59,7 +59,7 @@ class InputTypes:
                 max_text_length=len(str(max(abs(min_number * 10), abs(max_number)))) + 1,
                 horizontal_align="CENTER",
                 on_deselect=[self.constrain_number, self.update_value],
-                **self.text_input_mouse_functions
+                **self.TEXT_INPUT_MOUSE_FUNCTIONS
             ))
 
         @property
@@ -128,38 +128,36 @@ class InputTypes:
     all_input_types = [NumberInput, SwitchInput]
     input_types_by_id = {input_type.INPUT_ID: input_type for input_type in all_input_types}
 
-class GameClient:
+# Should I rename this to GameInfo? GameData?
+class Game:
     game_id: str | None = None
     title: str = "No Game Selected"
     window_size: tuple[int, int] | None = None
-    setting_class: GameSettings = GameSettings
     image: pygame.Surface = pygame.image.load("../assets/none_icon.png")
     # TODO: allow_spectators = False
 
-    def __init__(self, network):
-        self.settings = self.setting_class()
-        self.network = network
+    game_class: GameClient = GameClient
+    asset_class: GameAssets = GameAssets
+
+    def __init__(self):
+        self.settings = self.asset_class.Settings()
 
     def ready_to_start(self, players_connected):
         # Call this whenever players_connected changes, or any settings change.
         # Returns true if the game can be started, otherwise returns false or a string containing the reason it can not be started.
         return "No game selected"
 
-    def start_game(self):
+    def start_game(self, network):
         ...
 
-    def send_data(self, data):
-        self.network.send(data)
-
-    def on_data_received(self, data):
-        ...
-
-class SnakeClient(GameClient):
+class SnakeGame(Game):
     game_id = "snake"
     title = "Snake"
     window_size = (512, 512)
-    setting_class = SnakeSettings
     image: pygame.Surface = pygame.image.load("../assets/snake_icon.png")
+
+    client_class = SnakeClient
+    setting_class = SnakeAssets
 
     def ready_to_start(self, players_connected):
         if players_connected < 2:
@@ -169,12 +167,14 @@ class SnakeClient(GameClient):
         else:
             return True
 
-class PongClient(GameClient):
+class PongGame(Game):
     game_id = "pong"
     title = "Pong"
     window_size = (512, 512)
-    setting_class = PongSettings
     image: pygame.Surface = pygame.image.load("../assets/pong_icon.png")
+
+    client_class = PongClient
+    setting_class = PongAssets
 
     def ready_to_start(self, players_connected):
         if players_connected > self.settings.settings["max_players"]:
@@ -182,5 +182,5 @@ class PongClient(GameClient):
         else:
             return True
 
-selectable_games = [GameClient, SnakeClient, PongClient]
+selectable_games = [Game, SnakeGame, PongGame]
 games_by_id = {game.game_id: game for game in selectable_games}
