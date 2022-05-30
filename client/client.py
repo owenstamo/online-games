@@ -7,9 +7,10 @@ import _thread
 import random
 from typing import Type
 
-from client_assets import games_by_id, selectable_games, Game, get_button_functions, InputTypes
+from client_assets import games_by_id, selectable_games, GameData, get_button_functions, InputTypes
 import shared_assets
-from shared_assets import Messages, max_chat_messages
+from shared_assets import Messages, max_chat_messages, Client
+from games import Game
 from gui import Gui, GuiMouseEventHandler, get_auto_center_function, GuiKeyboardEventHandler
 from network import Network
 from utilities import Colors, Vert
@@ -412,7 +413,7 @@ class MultiplayerMenu(Menu):
     def __init__(self):
         super().__init__()
 
-        # region Gui Initialization
+        # region Gui initialization
         def element_on_mouse_up(element, *_):
             if element is self.back_button:
                 self.selected_lobby = None
@@ -775,7 +776,7 @@ class LobbyRoom(Menu):
         # endregion
 
         # TODO: It'll make the code longer, but I could directly take the gui elements from the old_room, instead of reinitializing each one
-        self._game_selected = old_room._game_selected if old_room else Game()
+        self._game_selected = old_room._game_selected if old_room else GameData()
 
         # region Initialize gui elements
         # Containers for player list and game settings
@@ -838,9 +839,27 @@ class LobbyRoom(Menu):
         self.time_of_last_message = 0
         self.spam_delay = 0.1
 
+        self.last_saved_time = 0
+        self.time_of_start_button_click = None
+
         self.private = old_room.private if old_room else False
         self._host_id: int | None = old_room.host_id if old_room else None
         self.player_list: list[LobbyRoom.ConnectedPlayer] = []
+
+    def update_countdown(self):
+        if self.time_of_start_button_click is None:
+            return
+        current_time = time.time()
+        last_elapsed_since_button_click = self.last_saved_time - self.time_of_start_button_click
+        elapsed_since_button_click = current_time - self.time_of_start_button_click
+        if int(elapsed_since_button_click) > int(last_elapsed_since_button_click):
+            if 3 - int(elapsed_since_button_click) <= 0:
+                self.time_of_start_button_click = None
+                return True
+            else:
+                self.game_start_button_text.text = f"Starting in: {3 - int(elapsed_since_button_click)}..."
+
+        self.last_saved_time = current_time
 
     def initialize_game_settings(self, old_room: LobbyRoom | None = None):
         self.game_setting_containers = []
@@ -1149,8 +1168,11 @@ class HostLobbyRoom(LobbyRoom):
                 elif element is self.kick_player_button:
                     network.send(Messages.KickPlayerFromLobbyMessage(self.player_selected.client_id))
                 elif element is self.game_start_button:
-                    ...
-                    # TODO: Add functionality for game start here
+                    # TODO: After clicking, countdown should occur. Don't worry about game settings etc. changing, just
+                    #  send all info after countdown is over. Consider case where ownership is transferred during countdown
+                    self.time_of_start_button_click = time.time()
+                    self.update_countdown()
+                    network.send(Messages.StartGameStartTimerMessage(self.time_of_start_button_click))
 
         def host_element_on_mouse_up(element, *_):
             if element is self.toggle_private_button:
@@ -1212,8 +1234,8 @@ class HostLobbyRoom(LobbyRoom):
         self.lobby_title_text = self.lobby_title
 
         self.game_select_dropdown = Gui.Rect(active=False)
-        self.game_elements: list[tuple[Gui.Rect, Gui.Rect, Gui.BoundingContainer, Gui.Text, Type[Game]]] = []
-        """game_elements is a list of tuples in the form tuple(container, game_image, text_container, text, game)"""
+        self.game_elements: list[tuple[Gui.Rect, Gui.Rect, Gui.BoundingContainer, Gui.Text, Type[GameData]]] = []
+        """game_elements is a list of tuples in the form tuple(container, game_image, text_container, text, game_data)"""
 
         for selectable_game in selectable_games:
             container = Gui.Rect(
@@ -1322,6 +1344,16 @@ class HostLobbyRoom(LobbyRoom):
             setting_name, setting_val = setting_item
             self.setting_element_contents[i][3].value = setting_val
         super().update_setting_text()
+
+    def update_countdown(self):
+        if super().update_countdown():
+            clients = [Client(player.name, player.client_id) for player in self.player_list]
+            host_client = Client(username, network.client_id)
+            GameHandler.start_game(self._game_selected, clients, host_client)
+            # TODO: The game data classes should probably be in shared_assets. Actually maybe not.
+            #  predicament: server should not require stuff like game image. but, i need some way to tell the server which GameServer to start.
+            #  It should be alright, though, to not send the game_id to the other clients as they already have the chosen game saved. Theoretically (since host can't change game after it's started)
+            network.send(Messages.StartGameMessage())
 
     def set_game_selected(self, value):
         super().set_game_selected(value)
@@ -1537,7 +1569,7 @@ class MemberLobbyRoom(LobbyRoom):
 
 class Menus:
     @classmethod
-    def set_active_menu(cls, value):
+    def set_active_menu(cls, value: Menu | None):
         p_menu_active = cls.menu_active
         cls.menu_active = value
 
@@ -1548,7 +1580,8 @@ class Menus:
             else:
                 cls.menu_active = ConnectingMenu(cls.menu_active, p_menu_active)
 
-        cls.menu_active.resize_elements()
+        if cls.menu_active:
+            cls.menu_active.resize_elements()
 
     title_screen_menu = TitleScreenMenu()
     options_menu = OptionsMenu()
@@ -1557,6 +1590,19 @@ class Menus:
     # TODO: Set to owner/member lobby room when room is created/joined
 
     menu_active: Menu | None = None
+
+class GameHandler:
+    @classmethod
+    def start_game(cls, game_data: GameData, clients: list[Client], host_client: Client):
+        cls.current_game = game_data.game_class(canvas,
+                                                network,
+                                                game_data.settings,
+                                                clients,
+                                                host_client,
+                                                Client(network.client_id, username))
+        Menus.set_active_menu(None)
+
+    current_game: Game | None = None
 
 
 Menus.set_active_menu(Menus.title_screen_menu)
@@ -1567,22 +1613,24 @@ def message_listener():
     listening_for_messages = True
 
     while True:
-
         message = network.recv()
 
-        if message.type == Messages.ErrorMessage.type:
+        if message.type == Messages.GameDataMessage.type:
+            if GameHandler.current_game:
+                GameHandler.current_game.on_data_received(message.data)
+        elif message.type == Messages.ErrorMessage.type:
             if isinstance(message.error, ConnectionResetError):
                 listening_for_messages = False
                 return
-        if message.type == Messages.LobbyListMessage.type:
+        elif message.type == Messages.LobbyListMessage.type:
             if isinstance(Menus.menu_active, MultiplayerMenu):
                 Menus.menu_active.set_lobbies(message.lobbies)
-        if message.type == Messages.LobbyInfoMessage.type:
+        elif message.type == Messages.LobbyInfoMessage.type:
             if isinstance(Menus.menu_active, LobbyRoom):
                 Menus.menu_active.set_lobby_info(message.lobby_info)
-        if message.type == Messages.KickedFromLobbyMessage.type:
+        elif message.type == Messages.KickedFromLobbyMessage.type:
             Menus.set_active_menu(Menus.multiplayer_menu)
-        if message.type == Messages.NewChatMessage.type:
+        elif message.type == Messages.NewChatMessage.type:
             if isinstance(Menus.menu_active, LobbyRoom):
                 Menus.menu_active.chat_text.text += [message.message]
                 if len(Menus.menu_active.chat_text.text) > max_chat_messages:
@@ -1590,6 +1638,9 @@ def message_listener():
                         Menus.menu_active.chat_text.text[len(Menus.menu_active.chat_text.text) - max_chat_messages:]
                 if not Menus.menu_active.chat_container.active:
                     Menus.menu_active.chat_notification.active = True
+        elif message.type == Messages.StartGameStartTimerMessage.type:
+            if isinstance(Menus.menu_active, LobbyRoom):
+                Menus.menu_active.time_of_start_button_click = message.start_time
 
 
 keyboard_event_handler = GuiKeyboardEventHandler()
@@ -1597,14 +1648,18 @@ mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 def on_frame():
     """Function to be called every frame. Handles drawing and per-frame functionality."""
+    if GameHandler.current_game:
+        GameHandler.current_game.on_frame()
 
-    canvas.fill(Colors.light_gray)
+    if isinstance(Menus.menu_active, LobbyRoom):
+        Menus.menu_active.update_countdown()
 
     if Menus.menu_active:
+        canvas.fill(Colors.light_gray)
         Menus.menu_active.gui.draw(canvas)
 
-    mouse_event_handler.main(Menus.menu_active.gui)
-    keyboard_event_handler.main(Menus.menu_active.gui)
+        mouse_event_handler.main(Menus.menu_active.gui)
+        keyboard_event_handler.main(Menus.menu_active.gui)
 
 def main():
     """Handles pygame loop and pygame events."""
@@ -1634,6 +1689,7 @@ def on_server_not_found():
 def on_server_disconnect():
     """Function to be called when the network can no longer find a server. Resets the menu to the title screen and attempts to reconnect."""
     Menus.set_active_menu(Menus.title_screen_menu)
+    GameHandler.current_game = None
     _thread.start_new_thread(network.connect, ())
 
 def on_server_connect():

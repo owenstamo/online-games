@@ -1,11 +1,12 @@
 import pygame
 import math
+from typing import Type
 
 from gui import Gui, get_button_functions, get_auto_center_function
 from utilities import Vert, constrain
 import shared_assets
 from shared_assets import InputTypeIDs, GameAssets, SnakeAssets, PongAssets
-from games import GameClient, SnakeClient, PongClient
+from games import Game, SnakeGame, PongGame
 
 # TODO: Move all colors to game_assets file.
 
@@ -129,15 +130,15 @@ class InputTypes:
     input_types_by_id = {input_type.INPUT_ID: input_type for input_type in all_input_types}
 
 # Should I rename this to GameInfo? GameData?
-class Game:
+class GameData:
     game_id: str | None = None
     title: str = "No Game Selected"
     window_size: tuple[int, int] | None = None
     image: pygame.Surface = pygame.image.load("../assets/none_icon.png")
     # TODO: allow_spectators = False
 
-    game_class: GameClient = GameClient
-    asset_class: GameAssets = GameAssets
+    game_class: Type[Game] = Game
+    asset_class: Type[GameAssets] = GameAssets
 
     def __init__(self):
         self.settings = self.asset_class.Settings()
@@ -147,16 +148,13 @@ class Game:
         # Returns true if the game can be started, otherwise returns false or a string containing the reason it can not be started.
         return "No game selected"
 
-    def start_game(self, network):
-        ...
-
-class SnakeGame(Game):
+class SnakeData(GameData):
     game_id = "snake"
     title = "Snake"
     window_size = (512, 512)
     image: pygame.Surface = pygame.image.load("../assets/snake_icon.png")
 
-    client_class = SnakeClient
+    game_class = SnakeGame
     setting_class = SnakeAssets
 
     def ready_to_start(self, players_connected):
@@ -167,13 +165,13 @@ class SnakeGame(Game):
         else:
             return True
 
-class PongGame(Game):
+class PongData(GameData):
     game_id = "pong"
     title = "Pong"
     window_size = (512, 512)
     image: pygame.Surface = pygame.image.load("../assets/pong_icon.png")
 
-    client_class = PongClient
+    game_class = PongGame
     setting_class = PongAssets
 
     def ready_to_start(self, players_connected):
@@ -182,5 +180,5 @@ class PongGame(Game):
         else:
             return True
 
-selectable_games = [Game, SnakeGame, PongGame]
+selectable_games = [GameData, SnakeData, PongData]
 games_by_id = {game.game_id: game for game in selectable_games}

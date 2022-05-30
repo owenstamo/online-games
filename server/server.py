@@ -4,7 +4,7 @@ import _thread
 import pickle
 from typing import Sequence
 import shared_assets
-from shared_assets import Messages, port, max_chat_messages
+from shared_assets import Messages, port, max_chat_messages, Client
 
 # TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
 # TODO: Capitalize constant variables
@@ -123,8 +123,11 @@ class Lobby:
                 continue
             server.send(member, Messages.LobbyInfoMessage(self.get_lobby_info(True, include_chat)))
 
-class ConnectedClient:
+class ConnectedClient(Client):
+    """A class representing a client that is connected to the server, including all information necessary for server to communicate with said client."""
+
     def __init__(self, client_id, conn, address, username=None):
+        super().__init__(username, client_id)
         self.client_id: int = client_id
         self.conn = conn
         self.address = address
@@ -193,7 +196,11 @@ def listen_to_client(client: ConnectedClient):
             print(f"Error: Received ConnectionResetError from {client.address}. Disconnecting.")
             break
 
-        if message.type == Messages.LobbyListRequest.type:
+        if message.type == Messages.GameDataMessage.type:
+            ...
+            # TODO: Store the server being run in the Lobby class, probably
+
+        elif message.type == Messages.LobbyListRequest.type:
             server.send(client, Messages.LobbyListMessage([lobby.get_lobby_info(False) for lobby in lobbies.values()]))
 
         elif message.type == Messages.CreateLobbyMessage.type:
@@ -261,6 +268,16 @@ def listen_to_client(client: ConnectedClient):
 
             for member in client.lobby_in.player_clients:
                 server.send(member, Messages.NewChatMessage(chat_message))
+
+        elif message.type == Messages.StartGameStartTimerMessage.type:
+            for client_in_lobby in client.lobby_in.player_clients:
+                if client_in_lobby is not client:
+                    server.send(client_in_lobby, Messages.StartGameStartTimer(message.start_time))
+
+        elif message.type == Messages.StartGameMessage.type:
+            for client_in_lobby in client.lobby_in.player_clients:
+                if client_in_lobby is not client:
+                    server.send(client_in_lobby, Messages.StartGameStartTimer(message.start_time))
 
     print(f"Disconnected from {client.address}")
 

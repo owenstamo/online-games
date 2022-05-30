@@ -8,6 +8,7 @@ max_chat_messages = 50
 
 class Messages:
     # TODO: I'm overwriting the type() function
+    # region Other classes
     class LobbyInfo:
         def __init__(self,
                      lobby_id: int,
@@ -28,7 +29,9 @@ class Messages:
             self.private = private
             self.chat = chat
             self.game_settings = game_settings
+    # endregion
 
+    # region Base message types
     class Message:
         style = "message"
         type = "default_message"
@@ -36,7 +39,9 @@ class Messages:
     class Request(Message):
         style = "request"
         type = "default_request"
+    # endregion
 
+    # region General server related messages
     class ConnectedMessage(Message):
         type = "connected"
 
@@ -49,6 +54,7 @@ class Messages:
 
         def __init__(self):
             ...  # Does this have to include the client's active gui? (it shouldn't and anyway, that would be bad).
+    # endregion
 
     # region Multiplayer menu related messages
     class LobbyListRequest(Request):
@@ -76,21 +82,24 @@ class Messages:
             self.lobby_id = lobby_id
             self.username = username
 
-    class LeaveLobbyMessage(Message):
-        type = "leave_lobby"
+    # TODO: If you join a lobby, then get the message that it was deleted right after, then it should kick you out
+    # class CannotJoinLobbyMessage(Message):
+    #     type = "cannot_join_lobby"
+    #
+    #     def __init__(self, error):
+    #         self.error = error
 
-    class CannotJoinLobbyMessage(Message):
-        type = "cannot_join_lobby"
+    # endregion
 
-        def __init__(self, error):
-            self.error = error
-
+    # region Lobby related messages
     class KickedFromLobbyMessage(Message):
         type = "kicked_from_lobby"
 
         def __init__(self, reason=None):
             self.reason = reason
-    # endregion
+
+    class LeaveLobbyMessage(Message):
+        type = "leave_lobby"
 
     class ChangeLobbySettingsMessage(Message):
         type = "change_lobby_settings"
@@ -110,12 +119,6 @@ class Messages:
         def __init__(self, lobby_info: Messages.LobbyInfo):
             self.lobby_info = lobby_info
 
-    class ErrorMessage(Message):
-        type = "error"
-
-        def __init__(self, error=None):
-            self.error = error
-
     class KickPlayerFromLobbyMessage(Message):
         type = "kick_player_from_lobby"
 
@@ -127,6 +130,42 @@ class Messages:
 
         def __init__(self, message):
             self.message = message
+
+    class StartGameStartTimerMessage(Message):
+        type = "start_game_start_timer_message"
+
+        def __init__(self, start_time):
+            self.start_time = start_time
+
+    class StartGameMessage(Message):
+        type = "start_game_message"
+
+        def __init__(self, ):
+
+    # endregion
+
+    # region Game related messages
+    class GameDataMessage(Message):
+        type = "game_data_message"
+
+        def __init__(self, data):
+            self.data = data
+    # endregion
+
+    # region Other messages
+    class ErrorMessage(Message):
+        type = "error"
+
+        def __init__(self, error=None):
+            self.error = error
+    # endregion
+
+class Client:
+    """A class representing a client, including its username and ID."""
+
+    def __init__(self, username, client_id):
+        self.username = username
+        self.client_id = client_id
 
 class InputTypeIDs:
     NONE = None
@@ -165,4 +204,3 @@ class PongAssets:
             **GameAssets.Settings.setting_info_list,
             "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 1, "max_number": 2})
         }
-
