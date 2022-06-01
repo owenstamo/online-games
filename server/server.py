@@ -183,6 +183,7 @@ class Server:
         print(f"  [R] Received {message.style} of type {message.type} from address {client.address}")
         return message
 
+
 clients_connected: dict[int, ConnectedClient] = {}
 
 def delete_lobby(lobby: Lobby):

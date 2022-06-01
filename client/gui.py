@@ -1148,7 +1148,8 @@ class InputHandler:
     def main(self, *_):
         self.find_inputs_down()
 
-        inputs_pressed, inputs_released = [], []
+        inputs_pressed: list = []
+        inputs_released: list = []
 
         for i in self.inputs_down:
             if i not in self.p_inputs_down:
@@ -1227,6 +1228,7 @@ class GuiMouseEventHandler(MouseEventHandler):
         self.on_input_up_funcs.append(self.on_mouse_up_gui)
         self.while_input_down_funcs.append(self.while_mouse_down_gui)
         self.main_funcs.append(self.main_gui)
+
         self.keyboard_event_handler = keyboard_event_handler
 
     def main(self, active_gui: Gui.GuiElement | Sequence[Gui.GuiElement] = ()):

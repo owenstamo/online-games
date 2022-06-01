@@ -163,7 +163,7 @@ class TitleScreenMenu(Menu):
             global canvas_active
 
             # TODO: Should implement this in other menus. Also, use element.mouse_is_over instead
-            if element is not mouse_event_handler.element_over:  # or Menus.menu_active is not self:
+            if element is not Menus.mouse_event_handler.element_over:  # or Menus.menu_active is not self:
                 # Commented out code makes sure that if the user switches guis while holding the element, it will ignore that
                 # element's on_mouse_up. Unnecessary since checking if the mouse is over the element automatically handles this.
                 return
@@ -1594,9 +1594,13 @@ class Menus:
 
     menu_active: Menu | None = None
 
+    keyboard_event_handler = GuiKeyboardEventHandler()
+    mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
+
 class GameHandler:
     @classmethod
     def start_game(cls, game_data: GameData, clients: list[Client], host_client: Client):
+        pygame.display.set_mode()
         cls.current_game = game_data.game_class(canvas,
                                                 network,
                                                 game_data.settings,
@@ -1605,7 +1609,66 @@ class GameHandler:
                                                 Client(network.client_id, username))
         Menus.set_active_menu(None)
 
+
+    # region Mouse and keyboard event functions
+    @staticmethod
+    def game_on_mouse_down_func(button):
+        if GameHandler.current_game:
+            GameHandler.current_game.on_mouse_down(button)
+
+    @staticmethod
+    def game_on_mouse_up_func(button):
+        if GameHandler.current_game:
+            GameHandler.current_game.on_mouse_up(button)
+
+    @staticmethod
+    def game_while_mouse_down_func(button):
+        if GameHandler.current_game:
+            GameHandler.current_game.while_mouse_down(button)
+
+    @staticmethod
+    def game_while_mouse_up_func(button):
+        if GameHandler.current_game:
+            GameHandler.current_game.while_mouse_up(button)
+
+    @staticmethod
+    def game_on_key_down_func(key_code):
+        if GameHandler.current_game:
+            GameHandler.current_game.on_key_down(key_code)
+
+    @staticmethod
+    def game_on_key_up_func(key_code):
+        if GameHandler.current_game:
+            GameHandler.current_game.on_key_up(key_code)
+
+    @staticmethod
+    def game_while_key_down_func(key_code):
+        if GameHandler.current_game:
+            GameHandler.current_game.while_key_down(key_code)
+
+    @staticmethod
+    def game_on_key_repeat_func(key_code):
+        if GameHandler.current_game:
+            GameHandler.current_game.on_key_repeat(key_code)
+
+    mouse_event_funcs = {
+        "on_mouse_down": game_on_mouse_down_func,
+        "on_mouse_up": game_on_mouse_up_func,
+        "while_mouse_down": game_while_mouse_down_func,
+        "while_mouse_up": game_while_mouse_up_func
+    }
+    keyboard_event_funcs = {
+        "on_key_down": game_on_key_down_func,
+        "on_key_up": game_on_key_up_func,
+        "while_key_down": game_while_key_down_func,
+        "on_key_repeat": game_on_key_repeat_func
+    }
+    # endregion
+
     current_game: Game | None = None
+
+    keyboard_event_handler = GuiKeyboardEventHandler(**keyboard_event_funcs)
+    mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler, **mouse_event_funcs)
 
 
 Menus.set_active_menu(Menus.title_screen_menu)
@@ -1649,14 +1712,12 @@ def message_listener():
                 GameHandler.start_game(Menus.menu_active.game_selected, message.clients, message.host_client)
                 network.send(Messages.GameInitializedMessage())
 
-
-keyboard_event_handler = GuiKeyboardEventHandler()
-mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
-
 def on_frame():
     """Function to be called every frame. Handles drawing and per-frame functionality."""
     if GameHandler.current_game:
         GameHandler.current_game.on_frame()
+        GameHandler.mouse_event_handler.main(GameHandler.current_game.gui)
+        GameHandler.keyboard_event_handler.main(GameHandler.current_game.gui)
 
     if isinstance(Menus.menu_active, LobbyRoom):
         Menus.menu_active.update_countdown()
@@ -1665,15 +1726,16 @@ def on_frame():
         canvas.fill(Colors.light_gray)
         Menus.menu_active.gui.draw(canvas)
 
-        mouse_event_handler.main(Menus.menu_active.gui)
-        keyboard_event_handler.main(Menus.menu_active.gui)
+        Menus.mouse_event_handler.main(Menus.menu_active.gui)
+        Menus.keyboard_event_handler.main(Menus.menu_active.gui)
 
 def main():
     """Handles pygame loop and pygame events."""
     global canvas_active
     while canvas_active:
         for event in pygame.event.get():
-            keyboard_event_handler.handle_pygame_keyboard_event(event)
+            Menus.keyboard_event_handler.handle_pygame_keyboard_event(event)
+            GameHandler.keyboard_event_handler.handle_pygame_keyboard_event(event)
             if event.type == pygame.QUIT:
                 canvas_active = False
             elif event.type == pygame.WINDOWRESIZED:
