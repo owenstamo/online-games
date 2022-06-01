@@ -28,6 +28,8 @@ _ = shared_assets
 #  ones. They may only be added to the chat after being sent back to the client who sent them.
 # TODO: Capitalize constant variables
 
+# TODO: Fix the timer when someone joins/leaves/changes settings/promotes while it's counting down
+
 # TODO: pygame.error: pygame_Blit: Surfaces must not be locked during blit
 
 pygame.init()

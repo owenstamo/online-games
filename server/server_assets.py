@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Type, Callable
 from shared_assets import GameAssets, SnakeAssets, PongAssets
 import time
 
@@ -15,17 +15,21 @@ class GameServer:
                  server: Server,
                  settings: GameAssets.Settings,
                  clients: list[ConnectedClient],
-                 host_client: ConnectedClient):
+                 host_client: ConnectedClient,
+                 on_game_over: Callable):
         self.server: Server = server
         self.settings = settings
         self.clients: list[ConnectedClient] = clients
         self.host_client: ConnectedClient = host_client
 
+        self.game_running = True
+        self.on_game_over = on_game_over
+
         self.time_of_last_frame = 0
         self.seconds_per_frame = 1 / self.FPS if self.FPS else None
 
     def call_on_frame(self):
-        while self.seconds_per_frame:
+        while self.seconds_per_frame and self.game_running:
             current_time = time.time()
             if current_time - self.time_of_last_frame >= 1 / self.FPS:
                 self.on_frame()
@@ -39,6 +43,10 @@ class GameServer:
     def send_data_to_all(self, data):
         for client in self.clients:
             self.send_data(client, data)
+
+    def end_game(self):
+        self.game_running = False
+        self.on_game_over()
 
     def on_data_received(self, client_from: ConnectedClient, data):
         ...

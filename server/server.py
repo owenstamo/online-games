@@ -129,11 +129,16 @@ class Lobby:
             server.send(member, Messages.LobbyInfoMessage(self.get_lobby_info(True, include_chat)))
 
     def start_game(self):
+        def on_game_end():
+            ...
+
         self.current_game = game_servers_by_id[self.game_selected_id](server,
                                                                       self.game_settings,
                                                                       self.player_clients,
-                                                                      self._host_client)
+                                                                      self._host_client,
+                                                                      on_game_end)
         _thread.start_new_thread(self.current_game.call_on_frame, ())
+        send_lobbies_to_each_client()
 
 class ConnectedClient(Client):
     """A class representing a client that is connected to the server, including all information necessary for server to communicate with said client."""
@@ -194,7 +199,8 @@ def delete_lobby(lobby: Lobby):
     send_lobbies_to_each_client()
 
 def send_lobbies_to_each_client():
-    lobbies_to_send = [lobby.get_lobby_info(False) for lobby in lobbies.values() if not lobby.private]
+    lobbies_to_send = [lobby.get_lobby_info(False) for lobby in lobbies.values()
+                       if not lobby.private and not lobby.current_game]
     for client in clients_connected.values():
         if client.lobby_in is None:
             server.send(client, Messages.LobbyListMessage(lobbies_to_send))
