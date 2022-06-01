@@ -131,7 +131,6 @@ class InputTypes:
     all_input_types = [NumberInput, SwitchInput]
     input_types_by_id = {input_type.INPUT_ID: input_type for input_type in all_input_types}
 
-# Should I rename this to GameInfo? GameData?
 class GameData:
     title: str = "No Game Selected"
     window_size: tuple[int, int] | None = None
