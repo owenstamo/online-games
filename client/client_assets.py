@@ -166,7 +166,7 @@ class SnakeData(GameData):
 
 class PongData(GameData):
     title = "Pong"
-    window_size = (512, 512)
+    window_size = None
     image: pygame.Surface = pygame.image.load("../assets/pong_icon.png")
 
     game_class = PongGame

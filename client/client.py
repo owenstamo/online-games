@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import copy
 import _thread
 import random
-from typing import Type
+from typing import Type, Callable, Union
 
 from client_assets import game_datas_by_id, selectable_games, GameData, get_button_functions, InputTypes
 import shared_assets
@@ -740,6 +740,7 @@ class LobbyRoom(Menu):
     connected_player_type = ConnectedPlayer
 
     def __init__(self, old_room: LobbyRoom | None = None):
+        self.player_list: list[LobbyRoom.ConnectedPlayer] = []
         super().__init__()
 
         # region Element event functions
@@ -850,26 +851,34 @@ class LobbyRoom(Menu):
         self.spam_delay = 0.1
 
         self.last_saved_time = 0
-        self.time_of_start_button_click = None
+        self.time_of_start_button_click = old_room.time_of_start_button_click if old_room else None
+        self.set_game_start_button_text()
 
         self.private = old_room.private if old_room else False
         self._host_id: int | None = old_room.host_id if old_room else None
-        self.player_list: list[LobbyRoom.ConnectedPlayer] = []
 
-    def update_countdown(self):
+    def update_countdown(self, force_change_text=False):
         if self.time_of_start_button_click is None:
             return
         current_time = time.time()
         last_elapsed_since_button_click = self.last_saved_time - self.time_of_start_button_click
         elapsed_since_button_click = current_time - self.time_of_start_button_click
-        if int(elapsed_since_button_click) > int(last_elapsed_since_button_click):
+        if int(elapsed_since_button_click) > int(last_elapsed_since_button_click) or force_change_text:
             if 3 - int(elapsed_since_button_click) <= 0:
                 self.time_of_start_button_click = None
+                self.set_game_start_button_text()
                 return True
             else:
-                self.game_start_button_text.text = f"Starting in: {3 - int(elapsed_since_button_click)}..."
+                self.set_game_start_button_text()
+
+        if force_change_text:
+            self.game_start_button_text.text = f"Starting in: {3 - int(elapsed_since_button_click)}..."
+            self.resize_game_start_text()
 
         self.last_saved_time = current_time
+
+    def set_game_start_button_text(self):
+        ...
 
     def initialize_game_settings(self, old_room: LobbyRoom | None = None):
         self.game_setting_containers = []
@@ -1153,22 +1162,22 @@ class HostLobbyRoom(LobbyRoom):
         # region Element event functions
         def grayable_element_on_mouse_over(element):
             if element in [self.kick_player_button, self.promote_player_button] and not self.player_action_buttons_grayed \
-                    or element is self.game_start_button and self.can_start_game:
+                    or element is self.game_start_button and self.can_start_game and self.time_of_start_button_click is None:
                 self.button_mouse_functions["on_mouse_over"][0](element)
 
         def grayable_element_on_mouse_not_over(element):
             if element in [self.kick_player_button, self.promote_player_button] and not self.player_action_buttons_grayed \
-                    or element is self.game_start_button and self.can_start_game:
+                    or element is self.game_start_button and self.can_start_game and self.time_of_start_button_click is None:
                 self.button_mouse_functions["on_mouse_not_over"][0](element)
 
         def grayable_element_on_mouse_down(element, *_):
             if element in [self.kick_player_button, self.promote_player_button] and not self.player_action_buttons_grayed \
-                    or element is self.game_start_button and self.can_start_game:
+                    or element is self.game_start_button and self.can_start_game and self.time_of_start_button_click is None:
                 self.button_mouse_functions["on_mouse_down"][0](element, *_)
 
         def grayable_element_on_mouse_up(element, *_):
             if element in [self.kick_player_button, self.promote_player_button] and not self.player_action_buttons_grayed \
-                    or element is self.game_start_button and self.can_start_game:
+                    or element is self.game_start_button and self.can_start_game and self.time_of_start_button_click is None:
                 self.button_mouse_functions["on_mouse_up"][0](element, *_)
 
                 if element is self.promote_player_button:
@@ -1181,6 +1190,7 @@ class HostLobbyRoom(LobbyRoom):
                     # TODO: After clicking, countdown should occur. Don't worry about game settings etc. changing, just
                     #  send all info after countdown is over. Consider case where ownership is transferred during countdown
                     self.time_of_start_button_click = time.time()
+                    self.game_start_button.col = self.button_default_color
                     self.update_countdown()
                     network.send(Messages.StartGameStartTimerMessage(self.time_of_start_button_click))
 
@@ -1286,21 +1296,23 @@ class HostLobbyRoom(LobbyRoom):
         self.set_player_list(old_room.player_list if old_room else [(username, network.client_id)])
         self.player_action_buttons_grayed = True
 
-        self.calculate_if_game_can_start()
+    def set_game_start_button_text(self):
+        if self.time_of_start_button_click:
+            elapsed_since_button_click = time.time() - self.time_of_start_button_click
+            self.game_start_button_text.text = f"Starting in: {3 - int(elapsed_since_button_click)}..."
+        else:
+            can_start = self._game_selected.ready_to_start(len(self.player_list))
+            self.can_start_game = can_start is True
 
-    def calculate_if_game_can_start(self):
-        can_start = self._game_selected.ready_to_start(len(self.player_list))
-        p_can_start = self.can_start_game
-        self.can_start_game = can_start is True
+            if self.can_start_game:
+                self.reset_button_color(self.game_start_button, self.button_default_color, self.button_mouse_over_color)
+                self.game_start_button_text.col = (0,) * 3
+            else:
+                self.game_start_button.col = self.button_grayed_out_color
+                self.game_start_button_text.col = self.text_grayed_out_color
 
-        if self.can_start_game and not p_can_start:
-            self.reset_button_color(self.game_start_button, self.button_default_color, self.button_mouse_over_color)
-            self.game_start_button_text.col = (0,) * 3
-        elif p_can_start and not self.can_start_game:
-            self.game_start_button.col = self.button_grayed_out_color
-            self.game_start_button_text.col = self.text_grayed_out_color
+            self.game_start_button_text.text = can_start if isinstance(can_start, str) else ("Start Game" if can_start else "Cannot Start")
 
-        self.game_start_button_text.text = can_start if isinstance(can_start, str) else ("Start Game" if can_start else "Cannot Start")
         self.resize_game_start_text()
 
     def set_player_list(self, value: list[tuple[str, int]] | list[LobbyRoom.ConnectedPlayer]):
@@ -1308,7 +1320,9 @@ class HostLobbyRoom(LobbyRoom):
         if self._player_selected is not None and self._player_selected not in self.player_list:
             self._player_selected = None
         self.set_player_action_buttons_grayed()
-        self.calculate_if_game_can_start()
+        # TODO: I'M CALLING THIS WHEN A PLAYER IS PROMOTED, THAT SHOULDN'T STOP COUNTDOWN
+        self.time_of_start_button_click = None
+        self.set_game_start_button_text()
 
     # TODO: Have the setting in a container on the left side of the menu, and the button/switch in a container on the right.
     def initialize_game_settings(self, old_room: LobbyRoom | None = None):
@@ -1336,7 +1350,8 @@ class HostLobbyRoom(LobbyRoom):
                         self._game_selected.settings.settings[setting_name_to_set] = value
                         network.send(Messages.ChangeLobbySettingsMessage(
                             game_settings=self._game_selected.settings))
-                        self.calculate_if_game_can_start()
+                        self.time_of_start_button_click = None
+                        self.set_game_start_button_text()
 
                 return update_setting_input
 
@@ -1355,8 +1370,8 @@ class HostLobbyRoom(LobbyRoom):
             self.setting_element_contents[i][3].value = setting_val
         super().update_setting_text()
 
-    def update_countdown(self):
-        if super().update_countdown():
+    def update_countdown(self, force_change_text=False):
+        if super().update_countdown(force_change_text):
             # clients = [Client(player.name, player.client_id) for player in self.player_list]
             # host_client = Client(username, network.client_id)
             network.send(Messages.StartGameMessage())
@@ -1364,7 +1379,8 @@ class HostLobbyRoom(LobbyRoom):
 
     def set_game_selected(self, value):
         super().set_game_selected(value)
-        self.calculate_if_game_can_start()
+        self.time_of_start_button_click = None
+        self.set_game_start_button_text()
 
     @property
     def host_id(self):
@@ -1483,8 +1499,6 @@ class MemberLobbyRoom(LobbyRoom):
         self.lobby_title_text = self.lobby_title.add_element(
             Gui.Text(old_room.lobby_title_text.text if old_room else "", **self.new_text_parameters))
 
-        self.game_start_button_text.text = "Waiting..."
-
         self.gui.add_element([self.lobby_title, self.chat_container])
         # endregion
 
@@ -1506,6 +1520,14 @@ class MemberLobbyRoom(LobbyRoom):
                 f"{setting_display_text} {setting_val}", on_draw_before=auto_center, text_align=["LEFT", "CENTER"]
             ))
             self.game_setting_containers[i].add_element(new_text_element)
+
+    def set_game_start_button_text(self):
+        if self.time_of_start_button_click:
+            elapsed_since_button_click = time.time() - self.time_of_start_button_click
+            self.game_start_button_text.text = f"Starting in: {3 - int(elapsed_since_button_click)}..."
+        else:
+            self.game_start_button_text.text = "Waiting..."
+        self.resize_game_start_text()
 
     def update_setting_text(self):
         for i, setting_item in enumerate(self._game_selected.settings.settings.items()):
@@ -1604,29 +1626,32 @@ class Menus:
 class GameHandler:
     @staticmethod
     def end_game():
-        # pygame.display.set_mode(cls.window_size_before_game_start if cls.window_size_before_game_start else
-        #                         pygame.display.get_window_size(), pygame.RESIZABLE)
-        GameHandler.current_game = None
-        # TODO: vvv What if another player gets promoted to host while in game
-        Menus.set_active_menu(Menus.lobby_room_menu)
+        def after_resize():
+            GameHandler.current_game = None
+            # TODO: vvv What if another player gets promoted to host while in game
+            Menus.set_active_menu(Menus.lobby_room_menu)
+        if GameHandler.window_size_before_game_start:
+            resize_canvas(GameHandler.window_size_before_game_start, True, after_resize)
+        else:
+            after_resize()
 
     @classmethod
     def start_game(cls, game_data: GameData, clients: list[Client], host_client: Client):
-        global canvas
+        def after_resize():
+            cls.current_game = game_data.game_class(canvas,
+                                                    network,
+                                                    game_data.settings,
+                                                    clients,
+                                                    host_client,
+                                                    Client(network.client_id, username),
+                                                    cls.end_game)
+            Menus.set_active_menu(None)
 
         if game_data.window_size:
-            # TODO:
-            #  canvas = pygame.display.set_mode((400, 400))
             cls.window_size_before_game_start = pygame.display.get_window_size()
-
-        cls.current_game = game_data.game_class(canvas,
-                                                network,
-                                                game_data.settings,
-                                                clients,
-                                                host_client,
-                                                Client(network.client_id, username),
-                                                cls.end_game)
-        Menus.set_active_menu(None)
+            resize_canvas(game_data.window_size, False, after_resize)
+        else:
+            after_resize()
 
     # region Mouse and keyboard event functions
     @staticmethod
@@ -1713,6 +1738,8 @@ def message_listener():
         elif message.type == Messages.LobbyInfoMessage.type:
             if isinstance(Menus.menu_active, LobbyRoom):
                 Menus.menu_active.set_lobby_info(message.lobby_info)
+            elif GameHandler.current_game and Menus.lobby_room_menu:
+                Menus.lobby_room_menu.set_lobby_info(message.lobby_info)
         elif message.type == Messages.KickedFromLobbyMessage.type:
             Menus.set_active_menu(Menus.multiplayer_menu)
         elif message.type == Messages.NewChatMessage.type:
@@ -1735,6 +1762,14 @@ def message_listener():
 
 def on_frame():
     """Function to be called every frame. Handles drawing and per-frame functionality."""
+    if canvas_resize_request:
+        global canvas
+        canvas = pygame.display.set_mode(canvas_resize_request[0], pygame.RESIZABLE if canvas_resize_request[0] else 0)
+        if Menus.menu_active:
+            Menus.menu_active.resize_elements()
+        if canvas_resize_request[2]:
+            canvas_resize_request[2]()
+
     if GameHandler.current_game:
         GameHandler.current_game.on_frame()
         GameHandler.mouse_event_handler.main(GameHandler.current_game.gui)
@@ -1747,12 +1782,15 @@ def on_frame():
         canvas.fill(Colors.light_gray)
         Menus.menu_active.gui.draw(canvas)
 
-        Menus.mouse_event_handler.main(Menus.menu_active.gui)
-        Menus.keyboard_event_handler.main(Menus.menu_active.gui)
+        if Menus.menu_active:
+            Menus.mouse_event_handler.main(Menus.menu_active.gui)
+        if Menus.menu_active:
+            Menus.keyboard_event_handler.main(Menus.menu_active.gui)
 
 def main():
     """Handles pygame loop and pygame events."""
     global canvas_active
+
     while canvas_active:
         for event in pygame.event.get():
             Menus.keyboard_event_handler.handle_pygame_keyboard_event(event)
@@ -1760,7 +1798,8 @@ def main():
             if event.type == pygame.QUIT:
                 canvas_active = False
             elif event.type == pygame.WINDOWRESIZED:
-                Menus.menu_active.resize_elements()
+                if Menus.menu_active:
+                    Menus.menu_active.resize_elements()
 
         on_frame()
 
@@ -1769,6 +1808,12 @@ def main():
 
     if network:
         network.send(Messages.DisconnectMessage())
+
+
+canvas_resize_request: tuple[tuple[int, int], bool, Union[Callable, None]] | None = None
+def resize_canvas(canvas_size, resizable: bool = False, callback: Callable = None):
+    global canvas_resize_request
+    canvas_resize_request = (canvas_size, resizable, callback)
 
 def on_server_not_found():
     """Function to be called when the network failed to find a server. Sets current loading menu's trying_again_text to active."""
@@ -1792,3 +1837,4 @@ if __name__ == "__main__":
     # Initialize network class, which automatically connects it to server.
     network = Network(on_server_not_found, on_server_disconnect, on_server_connect)
     main()
+

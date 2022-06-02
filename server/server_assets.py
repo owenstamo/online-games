@@ -11,6 +11,42 @@ class GameServer:
     FPS: int | None = None
     """Amount of times per second this game server's on_frame() should be called. Leave 0 or None for never."""
 
+    # region Private functions not to override
+    def call_on_frame(self):
+        while self.seconds_per_frame and self.game_running:
+            current_time = time.time()
+            if current_time - self.time_of_last_frame >= 1 / self.FPS:
+                self.on_frame()
+                self.time_of_last_frame = current_time
+
+            time.sleep(self.seconds_per_frame / 5)
+
+    def on_client_disconnect_private(self, client):
+        host_left = client is self.host_client
+        self.clients.remove(client)
+        if host_left:
+            self.host_client = self.clients[0]
+        self.on_client_disconnect(client)
+    # endregion
+
+    # region Utility functions to call but not override
+    def send_data(self, client: ConnectedClient | list[ConnectedClient], data):
+        self.server.send(client, data)
+
+    def send_data_to_all(self, data):
+        for client in self.clients:
+            self.send_data(client, data)
+
+    def end_game(self):
+        self.game_running = False
+        self.on_game_over()
+        for client in self.clients:
+            self.server.send(client, Messages.GameOverMessage())
+    # endregion
+
+    # region Automatically called functions to override
+
+    # Call to super.__init__(*args) required!
     def __init__(self,
                  server: Server,
                  settings: GameAssets.Settings,
@@ -28,29 +64,6 @@ class GameServer:
         self.time_of_last_frame = 0
         self.seconds_per_frame = 1 / self.FPS if self.FPS else None
 
-    def call_on_frame(self):
-        while self.seconds_per_frame and self.game_running:
-            current_time = time.time()
-            if current_time - self.time_of_last_frame >= 1 / self.FPS:
-                self.on_frame()
-                self.time_of_last_frame = current_time
-
-            time.sleep(self.seconds_per_frame / 5)
-
-    def send_data(self, client: ConnectedClient | list[ConnectedClient], data):
-        self.server.send(client, data)
-
-    def send_data_to_all(self, data):
-        for client in self.clients:
-            self.send_data(client, data)
-
-    def end_game(self):
-        # TODO: Send end_game message to all clients to tell them to end their games as well.
-        self.game_running = False
-        self.on_game_over()
-        for client in self.clients:
-            self.server.send(client, Messages.GameOverMessage())
-
     def on_data_received(self, client_from: ConnectedClient, data):
         ...
 
@@ -58,10 +71,8 @@ class GameServer:
         ...
 
     def on_client_disconnect(self, client):
-        host_left = client is self.host_client
-        self.clients.remove(client)
-        if host_left:
-            self.host_client = self.clients[0]
+        ...
+    # endregion
 
 class SnakeServer(GameServer):
     asset_class = SnakeAssets

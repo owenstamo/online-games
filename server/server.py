@@ -98,6 +98,9 @@ class Lobby:
         if player is self._host_client:
             self._host_client = self.player_clients[0]
 
+        if self.current_game:
+            self.current_game.on_client_disconnect_private(player)
+
         self.send_lobby_info_to_members()
         send_lobbies_to_each_client()
 
