@@ -1,7 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
-from gui import Gui
-
+from typing import TYPE_CHECKING, Callable
 import pygame
 
 if TYPE_CHECKING:
@@ -16,13 +14,15 @@ class Game:
                  settings: GameAssets.Settings,
                  clients: list[Client],
                  host_client: Client,
-                 this_client: Client):
+                 this_client: Client,
+                 on_game_end: Callable):
         self.canvas = canvas
         self.network = network
         self.settings = settings
         self.clients = clients
         self.host_client = host_client
         self.this_client = this_client
+        self.on_game_end = on_game_end
         self.gui = None
 
     def send_data(self, data):
@@ -50,7 +50,8 @@ class Game:
         ...
 
     def on_key_up(self, key_code):
-        ...
+        if key_code == pygame.K_a:
+            self.on_game_end()
 
     def while_key_down(self, key_code):
         ...

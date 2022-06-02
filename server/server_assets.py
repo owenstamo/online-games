@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Type, Callable
-from shared_assets import GameAssets, SnakeAssets, PongAssets
+from shared_assets import GameAssets, SnakeAssets, PongAssets, Messages
 import time
 
 if TYPE_CHECKING:
@@ -45,8 +45,11 @@ class GameServer:
             self.send_data(client, data)
 
     def end_game(self):
+        # TODO: Send end_game message to all clients to tell them to end their games as well.
         self.game_running = False
         self.on_game_over()
+        for client in self.clients:
+            self.server.send(client, Messages.GameOverMessage())
 
     def on_data_received(self, client_from: ConnectedClient, data):
         ...

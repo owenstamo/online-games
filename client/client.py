@@ -32,6 +32,8 @@ _ = shared_assets
 
 # TODO: pygame.error: pygame_Blit: Surfaces must not be locked during blit
 
+# TODO: Start button game text not resizing sometimes. (Like when I start when the canvas is small)
+
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
 pygame.display.set_caption("Online games and all that jazz.")
@@ -1600,17 +1602,31 @@ class Menus:
     mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler)
 
 class GameHandler:
+    @staticmethod
+    def end_game():
+        # pygame.display.set_mode(cls.window_size_before_game_start if cls.window_size_before_game_start else
+        #                         pygame.display.get_window_size(), pygame.RESIZABLE)
+        GameHandler.current_game = None
+        # TODO: vvv What if another player gets promoted to host while in game
+        Menus.set_active_menu(Menus.lobby_room_menu)
+
     @classmethod
     def start_game(cls, game_data: GameData, clients: list[Client], host_client: Client):
-        pygame.display.set_mode()
+        global canvas
+
+        if game_data.window_size:
+            # TODO:
+            #  canvas = pygame.display.set_mode((400, 400))
+            cls.window_size_before_game_start = pygame.display.get_window_size()
+
         cls.current_game = game_data.game_class(canvas,
                                                 network,
                                                 game_data.settings,
                                                 clients,
                                                 host_client,
-                                                Client(network.client_id, username))
+                                                Client(network.client_id, username),
+                                                cls.end_game)
         Menus.set_active_menu(None)
-
 
     # region Mouse and keyboard event functions
     @staticmethod
@@ -1668,6 +1684,7 @@ class GameHandler:
     # endregion
 
     current_game: Game | None = None
+    window_size_before_game_start: tuple | None = None
 
     keyboard_event_handler = GuiKeyboardEventHandler(**keyboard_event_funcs)
     mouse_event_handler = GuiMouseEventHandler(keyboard_event_handler, **mouse_event_funcs)
@@ -1713,6 +1730,8 @@ def message_listener():
             if isinstance(Menus.menu_active, LobbyRoom):
                 GameHandler.start_game(Menus.menu_active.game_selected, message.clients, message.host_client)
                 network.send(Messages.GameInitializedMessage())
+        elif message.type == Messages.GameOverMessage.type:
+            GameHandler.end_game()
 
 def on_frame():
     """Function to be called every frame. Handles drawing and per-frame functionality."""

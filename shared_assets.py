@@ -158,6 +158,9 @@ class Messages:
 
         def __init__(self, data):
             self.data = data
+
+    class GameOverMessage(Message):
+        type = "game_over_message"
     # endregion
 
     # region Other messages
