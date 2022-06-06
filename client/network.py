@@ -2,24 +2,21 @@ import socket
 from typing import Callable
 import shared_assets
 import pickle
-import _thread
 
 class Network:
     def __init__(self,
                  on_server_not_found: Callable = None,
-                 on_server_disconnect: Callable = None,
-                 on_server_connect: Callable = None):
+                 on_server_disconnect: Callable = None):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # TODO: Something about context shit here ^^
         self.server = "localhost"
         self.port = shared_assets.port
         self.address = (self.server, self.port)
-        self.on_server_connect = on_server_connect
         self.on_server_disconnect = on_server_disconnect
         self.on_server_not_found = on_server_not_found
 
         self.client_id = None
-        _thread.start_new_thread(self.connect, ())
+        self.connect()
 
     def connect(self):
         print("Connecting to server...")
@@ -38,8 +35,6 @@ class Network:
         connected_message = self.recv()
         print(f"Connected with address {connected_message.address} and client_id {connected_message.client_id}!")
         self.client_id = connected_message.client_id
-        if self.on_server_connect:
-            self.on_server_connect()
 
     def send(self, message):
         outgoing_message = pickle.dumps(message)
@@ -59,7 +54,7 @@ class Network:
         try:
             incoming_message = self.client.recv(4096)
         except ConnectionResetError as err:
-            print("Could not find server to receive message from. Assuming server is disconnected.")
+            print("Could not find server to receive message from server. Assuming server is disconnected.")
             if self.on_server_disconnect:
                 self.on_server_disconnect()
             return shared_assets.Messages.ErrorMessage(err)

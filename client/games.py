@@ -50,8 +50,7 @@ class Game:
         ...
 
     def on_key_up(self, key_code):
-        if key_code == pygame.K_a:
-            self.on_game_end()
+        ...
 
     def while_key_down(self, key_code):
         ...

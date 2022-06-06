@@ -21,9 +21,9 @@ class GameServer:
 
             time.sleep(self.seconds_per_frame / 5)
 
-    def on_client_disconnect_private(self, client):
-        host_left = client is self.host_client
-        self.clients.remove(client)
+    def on_client_disconnect_private(self, client: ConnectedClient):
+        host_left = client.client_id == self.host_client.client_id
+        self.clients = list(filter(lambda c: c.client_id != client.client_id, self.clients))
         if host_left:
             self.host_client = self.clients[0]
         self.on_client_disconnect(client)
@@ -39,7 +39,7 @@ class GameServer:
 
     def end_game(self):
         self.game_running = False
-        self.on_game_over()
+        self._on_game_over()
         for client in self.clients:
             self.server.send(client, Messages.GameOverMessage())
     # endregion
@@ -59,10 +59,14 @@ class GameServer:
         self.host_client: ConnectedClient = host_client
 
         self.game_running = True
-        self.on_game_over = on_game_over
+        self._on_game_over = on_game_over
 
         self.time_of_last_frame = 0
         self.seconds_per_frame = 1 / self.FPS if self.FPS else None
+
+    def on_game_start(self):
+        time.sleep(5)
+        self.end_game()
 
     def on_data_received(self, client_from: ConnectedClient, data):
         ...

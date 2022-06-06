@@ -898,17 +898,28 @@ class LobbyRoom(Menu):
         self._host_id = value
 
     def set_lobby_info(self, lobby_info: Messages.LobbyInfo):
+        changed_game = False
+
         if self.private != lobby_info.private:
             self.private = lobby_info.private
         if self.lobby_title_text and self.lobby_title_text.text != lobby_info.lobby_title:
             self.lobby_title_text.text = lobby_info.lobby_title
         if self._game_selected.asset_class.game_id != lobby_info.game_id:
             self.game_selected = game_datas_by_id[lobby_info.game_id]()
+            changed_game = True
         if lobby_info.chat:
             self.chat_text.text = lobby_info.chat
-        if lobby_info.game_settings:
+        # noinspection PyUnresolvedReferences
+        if (lobby_info.game_settings is None and self._game_selected.settings is not None) or \
+                (lobby_info.game_settings is not None and self._game_selected.settings is None) or \
+                (lobby_info.game_settings is not None and self._game_selected.settings is not None
+                 and lobby_info.game_settings.settings != self._game_selected.settings.settings):
             self._game_selected.settings = lobby_info.game_settings
             self.update_setting_text()
+            if not changed_game:
+                # If game has been changed, that means the start button text has already been updated, and we do not need to do so again.
+                self.time_of_start_button_click = None
+                self.set_game_start_button_text()
 
         # Setting self.host_id will change the lobby gui if doing so will change this member's status, but
         #  set_player_list must be called before so that the new lobby gui's player list is correct
@@ -974,6 +985,9 @@ class LobbyRoom(Menu):
         self.resize_game_select_text()
         self.resize_game_settings()
         self.game_image.image = value.image
+
+        self.time_of_start_button_click = None
+        self.set_game_start_button_text()
 
     @game_selected.setter
     def game_selected(self, value):
@@ -1293,7 +1307,10 @@ class HostLobbyRoom(LobbyRoom):
         self.player_selected = None
         self.last_sent_lobby_title = self.lobby_title_text.text
 
-        self.set_player_list(old_room.player_list if old_room else [(username, network.client_id)])
+        if old_room:
+            self.player_list = old_room.player_list
+        else:
+            self.set_player_list([(username, network.client_id)])
         self.player_action_buttons_grayed = True
 
     def set_game_start_button_text(self):
@@ -1316,13 +1333,14 @@ class HostLobbyRoom(LobbyRoom):
         self.resize_game_start_text()
 
     def set_player_list(self, value: list[tuple[str, int]] | list[LobbyRoom.ConnectedPlayer]):
+        p_players_connected = set(self.player_list)
         super().set_player_list(value)
         if self._player_selected is not None and self._player_selected not in self.player_list:
             self._player_selected = None
         self.set_player_action_buttons_grayed()
-        # TODO: I'M CALLING THIS WHEN A PLAYER IS PROMOTED, THAT SHOULDN'T STOP COUNTDOWN
-        self.time_of_start_button_click = None
-        self.set_game_start_button_text()
+        if p_players_connected != set(self.player_list):
+            self.time_of_start_button_click = None
+            self.set_game_start_button_text()
 
     # TODO: Have the setting in a container on the left side of the menu, and the button/switch in a container on the right.
     def initialize_game_settings(self, old_room: LobbyRoom | None = None):
@@ -1348,8 +1366,7 @@ class HostLobbyRoom(LobbyRoom):
                 def update_setting_input(value):
                     if value != self._game_selected.settings.settings[setting_name_to_set]:
                         self._game_selected.settings.settings[setting_name_to_set] = value
-                        network.send(Messages.ChangeLobbySettingsMessage(
-                            game_settings=self._game_selected.settings))
+                        network.send(Messages.ChangeLobbySettingsMessage(game_settings=self._game_selected.settings))
                         self.time_of_start_button_click = None
                         self.set_game_start_button_text()
 
@@ -1365,6 +1382,7 @@ class HostLobbyRoom(LobbyRoom):
             ))
 
     def update_setting_text(self):
+        """Currently unused, as this is only required for when settings are externally changed (which does not happen for host lobby menu)."""
         for i, setting_item in enumerate(self._game_selected.settings.settings.items()):
             setting_name, setting_val = setting_item
             self.setting_element_contents[i][3].value = setting_val
@@ -1372,15 +1390,7 @@ class HostLobbyRoom(LobbyRoom):
 
     def update_countdown(self, force_change_text=False):
         if super().update_countdown(force_change_text):
-            # clients = [Client(player.name, player.client_id) for player in self.player_list]
-            # host_client = Client(username, network.client_id)
             network.send(Messages.StartGameMessage())
-            # GameHandler.start_game(self._game_selected, clients, host_client)
-
-    def set_game_selected(self, value):
-        super().set_game_selected(value)
-        self.time_of_start_button_click = None
-        self.set_game_start_button_text()
 
     @property
     def host_id(self):
@@ -1602,12 +1612,8 @@ class Menus:
         p_menu_active = cls.menu_active
         cls.menu_active = value
 
-        if isinstance(cls.menu_active, MultiplayerMenu) and network:
-            if network.send(Messages.LobbyListRequest()):
-                if not listening_for_messages:
-                    _thread.start_new_thread(message_listener, ())
-            else:
-                cls.menu_active = ConnectingMenu(cls.menu_active, p_menu_active)
+        if isinstance(cls.menu_active, MultiplayerMenu) and not network:
+            cls.menu_active = ConnectingMenu(cls.menu_active, p_menu_active)
 
         if cls.menu_active:
             cls.menu_active.resize_elements()
@@ -1616,7 +1622,6 @@ class Menus:
     options_menu = OptionsMenu()
     multiplayer_menu = MultiplayerMenu()
     lobby_room_menu = None
-    # TODO: Set to owner/member lobby room when room is created/joined
 
     menu_active: Menu | None = None
 
@@ -1722,6 +1727,8 @@ def message_listener():
     global listening_for_messages
     listening_for_messages = True
 
+    print("Now listening for messages...")
+
     while True:
         message = network.recv()
 
@@ -1730,11 +1737,12 @@ def message_listener():
                 GameHandler.current_game.on_data_received(message.data)
         elif message.type == Messages.ErrorMessage.type:
             if isinstance(message.error, ConnectionResetError):
+                # Called on server disconnect
                 listening_for_messages = False
                 return
         elif message.type == Messages.LobbyListMessage.type:
-            if isinstance(Menus.menu_active, MultiplayerMenu):
-                Menus.menu_active.set_lobbies(message.lobbies)
+            if not isinstance(Menus.menu_active, LobbyRoom) and Menus.menu_active is not None:
+                Menus.multiplayer_menu.set_lobbies(message.lobbies)
         elif message.type == Messages.LobbyInfoMessage.type:
             if isinstance(Menus.menu_active, LobbyRoom):
                 Menus.menu_active.set_lobby_info(message.lobby_info)
@@ -1762,13 +1770,17 @@ def message_listener():
 
 def on_frame():
     """Function to be called every frame. Handles drawing and per-frame functionality."""
+    global canvas_resize_request
+    global canvas
+
     if canvas_resize_request:
-        global canvas
-        canvas = pygame.display.set_mode(canvas_resize_request[0], pygame.RESIZABLE if canvas_resize_request[0] else 0)
+        canvas_resize_request_copy, canvas_resize_request = canvas_resize_request, None
+        canvas = pygame.display.set_mode(canvas_resize_request_copy[0],
+                                         pygame.RESIZABLE if canvas_resize_request_copy[1] else 0)
         if Menus.menu_active:
             Menus.menu_active.resize_elements()
-        if canvas_resize_request[2]:
-            canvas_resize_request[2]()
+        if canvas_resize_request_copy[2]:
+            canvas_resize_request_copy[2]()
 
     if GameHandler.current_game:
         GameHandler.current_game.on_frame()
@@ -1823,18 +1835,27 @@ def on_server_not_found():
 
 def on_server_disconnect():
     """Function to be called when the network can no longer find a server. Resets the menu to the title screen and attempts to reconnect."""
+    global network
+
     Menus.set_active_menu(Menus.title_screen_menu)
     GameHandler.current_game = None
-    _thread.start_new_thread(network.connect, ())
+    network = None
+    _thread.start_new_thread(initialize_network, ())
 
 def on_server_connect():
     """Function to be called when the network connects to a server. Exits the loading menu."""
     if isinstance(Menus.menu_active, ConnectingMenu):
         Menus.menu_active.load_next_menu()
 
+    if not listening_for_messages:
+        _thread.start_new_thread(message_listener, ())
+
+def initialize_network():
+    global network
+    network = Network(on_server_not_found, on_server_disconnect)
+    on_server_connect()
 
 if __name__ == "__main__":
     # Initialize network class, which automatically connects it to server.
-    network = Network(on_server_not_found, on_server_disconnect, on_server_connect)
+    _thread.start_new_thread(initialize_network, ())
     main()
-

@@ -174,7 +174,7 @@ class PongData(GameData):
 
     def ready_to_start(self, players_connected):
         if players_connected > self.settings.settings["max_players"]:
-            return f"Too Many pPlayers (Max: {self.settings.settings['max_players']})"
+            return f"Too Many Players (Max: {self.settings.settings['max_players']})"
         else:
             return True
 

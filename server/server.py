@@ -133,13 +133,15 @@ class Lobby:
 
     def start_game(self):
         def on_game_end():
-            ...
+            self.current_game = None
+            send_lobbies_to_each_client()
 
         self.current_game = game_servers_by_id[self.game_selected_id](server,
                                                                       self.game_settings,
                                                                       self.player_clients,
                                                                       self._host_client,
                                                                       on_game_end)
+        _thread.start_new_thread(self.current_game.on_game_start, ())
         _thread.start_new_thread(self.current_game.call_on_frame, ())
         send_lobbies_to_each_client()
 

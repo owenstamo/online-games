@@ -208,7 +208,7 @@ class SnakeAssets:
     class Settings(GameAssets.Settings):
         setting_info_list = {
             **GameAssets.Settings.setting_info_list,
-            "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 2, "max_number": 2}),
+            "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 2, "max_number": 4}),
             "board_width": ("Width of Board:", InputTypeIDs.NUMBER_INPUT, 15, {"min_number": 5, "max_number": 30}),
             "board_height": ("Height of Board:", InputTypeIDs.NUMBER_INPUT, 15, {"min_number": 5, "max_number": 30})
         }
