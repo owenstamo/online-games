@@ -326,7 +326,7 @@ def listen_to_client(client: ConnectedClient):
 
 def console_commands():
     while True:
-        inp = input()
+        inp = input("")
         if inp in ["k", "kill"]:
             break
 

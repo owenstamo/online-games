@@ -134,7 +134,7 @@ class InputTypes:
 class GameData:
     title: str = "No Game Selected"
     window_size: tuple[int, int] | None = None
-    image: pygame.Surface = pygame.image.load("../assets/none_icon.png")
+    image: pygame.Surface = pygame.image.load("assets/none_icon.png")
     # TODO: allow_spectators = False
 
     game_class: Type[Game] = Game
@@ -151,7 +151,7 @@ class GameData:
 class SnakeData(GameData):
     title = "Snake"
     window_size = (512, 512)
-    image: pygame.Surface = pygame.image.load("../assets/snake_icon.png")
+    image: pygame.Surface = pygame.image.load("assets/snake_icon.png")
 
     game_class = SnakeGame
     asset_class = SnakeAssets
@@ -167,7 +167,7 @@ class SnakeData(GameData):
 class PongData(GameData):
     title = "Pong"
     window_size = None
-    image: pygame.Surface = pygame.image.load("../assets/pong_icon.png")
+    image: pygame.Surface = pygame.image.load("assets/pong_icon.png")
 
     game_class = PongGame
     asset_class = PongAssets
@@ -181,4 +181,3 @@ class PongData(GameData):
 
 selectable_games: list[Type[GameData]] = [GameData, SnakeData, PongData]
 game_datas_by_id: dict[str, Type[GameData]] = {game.asset_class.game_id: game for game in selectable_games}
-...

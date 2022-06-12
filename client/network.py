@@ -9,7 +9,7 @@ class Network:
                  on_server_disconnect: Callable = None):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # TODO: Something about context shit here ^^
-        self.server = "localhost"
+        self.server = "216.71.110.17"
         self.port = shared_assets.port
         self.address = (self.server, self.port)
         self.on_server_disconnect = on_server_disconnect

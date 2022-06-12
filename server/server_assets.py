@@ -65,8 +65,7 @@ class GameServer:
         self.seconds_per_frame = 1 / self.FPS if self.FPS else None
 
     def on_game_start(self):
-        time.sleep(5)
-        self.end_game()
+        ...
 
     def on_data_received(self, client_from: ConnectedClient, data):
         ...

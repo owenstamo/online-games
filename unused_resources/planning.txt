@@ -1,0 +1,59 @@
+Main Menu:
+    - Username
+    - Multiplayer (can't press if no username)
+        - Create lobby
+            - Put in name lobby's name
+        - Join lobby (lobbies are in a list. double click or select and press "join lobby" to join)
+            - Username can't already be in lobby
+    - Options
+        - Keybinds. Do I even need this? Or even options as a whole?
+    - Exit
+
+Options:
+    - Keybinds?
+        - What keybinds do I need? Should I have keybinds like "up", "down", "jump", etc. that all games use, instead of having their own keybinds?
+            - Would that work for games that use, like, "up"="w", then others with "jump"="w", then others with "jump"="space"
+                - Just don't do "jump"="w", dumbo
+                    - OR have game-specific keybinds
+                        - That's gross no
+
+Multiplayer menu:
+    - Lobbies list
+        (shows username, lobby name, maybe a picture of the selected game)
+                                      - Make a shared asset with all games + their pictures & all that
+    - Join button (greyed out when lobby not selected)
+    - Refresh button (or do you just want to live refresh?) (could also do both) (also have to refresh lobby name, etc.)
+        - When a change is made/saved, send it to the server. When the server receives a change, send it to all clients
+    - Create lobby button
+
+Create lobby button:
+    - Creates a lobby with default name (i.e. New Lobby) and instantly sends user into it
+    - Lobbies can have duplicate names, you can differentiate them by the person who made them
+
+    - Do I want a private/public button? Or a password?
+    - If I do want that, I'll make sure to add a case for if a lobby goes private but you haven't refreshed yet and can thus still see it.
+    - Any changes will be sent straight to the server.
+
+Lobby menu (as owner):
+    - Change game
+        - Maybe show an image of the game that you can click that takes to you a menu?
+    - When a game has custom settings, either have a button that opens up a menu to change them, or show them in a (previously blank) area below.
+    - Show a list of all players
+    - Have a section for lobby-specific settings
+        - When a game can only have a set number of users, (i.e. a 1v1 game), set max_players and don't let game start until enough people have been kicked out.
+            - Still show lobby in list, but don't let anybody join if full.
+
+Lobby menu (as guest):
+    - Show game, picture of game, and any extra game info
+    - List of all players.
+    - Maybe put everything in the same place as in the owner's interface, just settings are unchangeable.
+
+
+
+For making games:
+    - Need a client class, server class, and shared class. Any classes contained within messages sent between server and client must be from shared.
+
+Game:
+GameClient:
+GameSettings:
+GameServer:
