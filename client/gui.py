@@ -12,7 +12,6 @@ import copy
 # TODO: Make immutable immutable verts good (like a child of vert or something pls)
 # TODO: Add gui elements you can scroll in (I'm sorry future me)
 #        Or just don't. That's an equally valid thing to do.
-# TODO: Capitalize constant variables
 
 def get_list_of_input(inp: any) -> list:
     """
@@ -212,8 +211,8 @@ class Gui:
             self._contents: list[Gui.GuiElement] = []
             self.contents = contents
 
-        # TODO: Make add_element able to take multiple parameters as opposed to only taking lists for multiple elements
-        def add_element(self, elements: Gui.GuiElement | Sequence[Gui.GuiElement]):
+        def add_element(self, *elements: Gui.GuiElement | Sequence[Gui.GuiElement]):
+            elements = [] if len(elements) == 0 else elements[0] if len(elements) == 1 else elements
             orig_elements = [element for element in elements] if isinstance(elements, Sequence) else elements
             if isinstance(elements, Sequence):
                 for element in elements:

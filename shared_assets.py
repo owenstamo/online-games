@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-# TODO: Capitalize constant variables
-
 port = 5555
 
 max_chat_messages = 50
 
 class Messages:
-    # TODO: I'm overwriting the type() function
     # region Other classes
     class LobbyInfo:
         def __init__(self,
@@ -31,43 +28,38 @@ class Messages:
             self.game_settings = game_settings
     # endregion
 
-    # region Base message types
+    # region Base message type
     class Message:
-        style = "message"
-        type = "default_message"
-
-    class Request(Message):
-        style = "request"
-        type = "default_request"
+        name = "default_message"
     # endregion
 
     # region General server related messages
     class ConnectedMessage(Message):
-        type = "connected"
+        name = "connected"
 
         def __init__(self, address, client_id):
             self.address = address
             self.client_id = client_id
 
     class DisconnectMessage(Message):
-        type = "disconnect"
+        name = "disconnect"
 
         def __init__(self):
             ...  # Does this have to include the client's active gui? (it shouldn't and anyway, that would be bad).
     # endregion
 
     # region Multiplayer menu related messages
-    class LobbyListRequest(Request):
-        type = "lobby_list_info_request"
+    class LobbyListRequest(Message):
+        name = "lobby_list_info_request"
 
     class LobbyListMessage(Message):
-        type = "lobby_list_info"
+        name = "lobby_list_info"
 
         def __init__(self, lobbies: list[Messages.LobbyInfo]):
             self.lobbies = lobbies
 
     class CreateLobbyMessage(Message):
-        type = "create_lobby"
+        name = "create_lobby"
 
         def __init__(self, username: str, lobby_title: str, settings: GameAssets.Settings, private: bool = False):
             self.username = username
@@ -76,33 +68,26 @@ class Messages:
             self.private = private
 
     class JoinLobbyMessage(Message):
-        type = "join_lobby"
+        name = "join_lobby"
 
         def __init__(self, lobby_id, username):
             self.lobby_id = lobby_id
             self.username = username
 
-    # TODO: If you join a lobby, then get the message that it was deleted right after, then it should kick you out
-    # class CannotJoinLobbyMessage(Message):
-    #     type = "cannot_join_lobby"
-    #
-    #     def __init__(self, error):
-    #         self.error = error
-
     # endregion
 
     # region Lobby related messages
     class KickedFromLobbyMessage(Message):
-        type = "kicked_from_lobby"
+        name = "kicked_from_lobby"
 
         def __init__(self, reason=None):
             self.reason = reason
 
     class LeaveLobbyMessage(Message):
-        type = "leave_lobby"
+        name = "leave_lobby"
 
     class ChangeLobbySettingsMessage(Message):
-        type = "change_lobby_settings"
+        name = "change_lobby_settings"
         unchanged = "unchanged"
 
         def __init__(self, lobby_title: str = unchanged, private: bool = unchanged, host_id: int = unchanged,
@@ -114,34 +99,34 @@ class Messages:
             self.game_settings = game_settings
 
     class LobbyInfoMessage(Message):
-        type = "lobby_info"
+        name = "lobby_info"
 
         def __init__(self, lobby_info: Messages.LobbyInfo):
             self.lobby_info = lobby_info
 
     class KickPlayerFromLobbyMessage(Message):
-        type = "kick_player_from_lobby"
+        name = "kick_player_from_lobby"
 
         def __init__(self, client_id: int):
             self.client_id = client_id
 
     class NewChatMessage(Message):
-        type = "chat_message"
+        name = "chat_message"
 
         def __init__(self, message):
             self.message = message
 
     class StartGameStartTimerMessage(Message):
-        type = "start_game_start_timer_message"
+        name = "start_game_start_timer_message"
 
         def __init__(self, start_time):
             self.start_time = start_time
 
     class StartGameMessage(Message):
-        type = "start_game_message"
+        name = "start_game_message"
 
     class GameStartedMessage(Message):
-        type = "game_started_message"
+        name = "game_started_message"
 
         def __init__(self, clients, host_client, game_id=None):
             self.clients = clients
@@ -149,23 +134,23 @@ class Messages:
             self.game_id = game_id
 
     class GameInitializedMessage(Message):
-        type = "game_initialized_message"
+        name = "game_initialized_message"
     # endregion
 
     # region Game related messages
     class GameDataMessage(Message):
-        type = "game_data_message"
+        name = "game_data_message"
 
         def __init__(self, data):
             self.data = data
 
     class GameOverMessage(Message):
-        type = "game_over_message"
+        name = "game_over_message"
     # endregion
 
     # region Other messages
     class ErrorMessage(Message):
-        type = "error"
+        name = "error"
 
         def __init__(self, error=None):
             self.error = error

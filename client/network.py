@@ -8,7 +8,6 @@ class Network:
                  on_server_not_found: Callable = None,
                  on_server_disconnect: Callable = None):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # TODO: Something about context shit here ^^
         self.server = "216.71.110.17"
         self.port = shared_assets.port
         self.address = (self.server, self.port)
@@ -37,36 +36,43 @@ class Network:
         self.client_id = connected_message.client_id
 
     def send(self, message):
-        outgoing_message = pickle.dumps(message)
+        try:
+            outgoing_message = pickle.dumps(message)
+        except Exception as err:
+            print(f"Error: Error when attempting to pickle {message.name}: {repr(err)}")
+            return
+
         try:
             self.client.send(outgoing_message)
-            print(f"  [S] Sent {message.style} of type {message.type} to the server")
-            return True
         except ConnectionResetError:
-            print(f"Could not find server to send {message.style} of type {message.type}. Assuming server is disconnected.")
+            print(f"Could not find server to send message of type {message.name}. Assuming server is disconnected.")
             if self.on_server_disconnect:
                 self.on_server_disconnect()
             return False
-        except OSError:
+        except Exception as err:
+            print(f"Error: Error when attempting to send {message.name} to server: {repr(err)}")
             return False
+
+        print(f"  [S] Sent message of type {message.name} to the server")
+        return True
 
     def recv(self):
         try:
             incoming_message = self.client.recv(4096)
         except ConnectionResetError as err:
-            print("Could not find server to receive message from server. Assuming server is disconnected.")
+            print(f"Could not find server to receive message from (ConnectionResetError: {err}). Assuming server is disconnected.")
             if self.on_server_disconnect:
                 self.on_server_disconnect()
             return shared_assets.Messages.ErrorMessage(err)
-        except OSError as err:
+        except Exception as err:
+            print(f"Error: Error when attempting to receive message from server: {repr(err)}")
             return shared_assets.Messages.ErrorMessage(err)
 
         try:
             message = pickle.loads(incoming_message)
-        except EOFError as err:
-            print(f"Received EOFError when loading server message: {err}")
+        except Exception as err:
+            print(f"Error: Unable to unpickle message from server: {repr(err)}")
             return shared_assets.Messages.ErrorMessage(err)
 
-        print(f"  [R] Received {message.style} of type {message.type} from server.")
+        print(f"  [R] Received message of type {message.name} from server.")
         return message
-

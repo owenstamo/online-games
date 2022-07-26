@@ -9,8 +9,6 @@ from server_assets import GameServer, game_servers_by_id
 
 _ = shared_assets
 
-# TODO: When a host leaves in a lobby with at least two people, there's a little spazz for anyone in the lobby selector looking at the lobby info
-# TODO: Capitalize constant variables
 # TODO: Handle errors so the server doesn't die out of nowhere
 
 lobbies: dict[int, Lobby] = {}
@@ -86,23 +84,23 @@ class Lobby:
 
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
-            if client_in_lobby is player:
+            if client_in_lobby.client_id == player.client_id:
                 client_in_lobby.lobby_in = None
                 del self.player_clients[i]
                 break
 
         if len(self.player_clients) == 0:
-            delete_lobby(self)
+            delete_lobby(self, player)
             return
 
-        if player is self._host_client:
+        if player.client_id is self._host_client.client_id:
             self._host_client = self.player_clients[0]
 
         if self.current_game:
             self.current_game.on_client_disconnect_private(player)
 
         self.send_lobby_info_to_members()
-        send_lobbies_to_each_client()
+        send_lobbies_to_each_client(player)
 
     def get_lobby_info(self, include_in_lobby_info=True, include_chat=False):
         parameters = {
@@ -177,38 +175,64 @@ class Server:
 
     @staticmethod
     def send(client, message: Messages.Message):
-        outgoing_message = pickle.dumps(message)
+        try:
+            outgoing_message = pickle.dumps(message)
+        except Exception as err:
+            print(f"Error: Error when attempting to pickle {message.name}: {repr(err)}")
+            return
+
         try:
             client.conn.sendall(outgoing_message)
-            print(f"  [S] Sent {message.style} of type {message.type} to address {client.address}")
         except ConnectionResetError:
-            print(f"Error: Attempted to send {message.style} of type {message.type} to closed client at address {client.address}. This is likely not an issue.")
-        except ConnectionAbortedError:
-            print(f"Error: Received ConnectionAbortedError when trying to send {message.style} of type {message.type} to client at address {client.address}.")
+            print(f"Error: Attempted to send message of type {message.name} to closed client at address {client.address}. This is likely not an issue.")
+            return
+        except Exception as err:
+            print(f"Error: Error when attempting to send {message.name} to client at address {client.address}: {repr(err)}")
+            return
+
+        print(f"  [S] Sent message of type {message.name} to address {client.address}")
+        # TODO: I'm catching all errors, but what if I dont want to?
 
     @staticmethod
     def recv(client):
-        incoming_message = client.conn.recv(4096)
-        message = pickle.loads(incoming_message)
-        print(f"  [R] Received {message.style} of type {message.type} from address {client.address}")
+        try:
+            incoming_message = client.conn.recv(4096)
+        except Exception as err:
+            print(f"Error: Error when attempting to receive message from client at address {client.address}: {repr(err)}")
+            return Messages.ErrorMessage(err)
+
+        try:
+            message = pickle.loads(incoming_message)
+        except Exception as err:
+            print(f"Error: Unable to unpickle message from client at address {client.address}: {repr(err)}")
+            return Messages.ErrorMessage(err)
+
+        print(f"  [R] Received message of type {message.name} from address {client.address}")
         return message
 
 
 clients_connected: dict[int, ConnectedClient] = {}
 
-def delete_lobby(lobby: Lobby):
+def delete_lobby(lobby: Lobby, player_to_ignore: ConnectedClient = None):
     for client in lobby.player_clients:
         server.send(client, Messages.KickedFromLobbyMessage())
+        client.lobby_in = None
 
     del lobbies[lobby.lobby_id]
 
-    send_lobbies_to_each_client()
+    send_lobbies_to_each_client(lobby.player_clients + [player_to_ignore] if player_to_ignore else [])
 
-def send_lobbies_to_each_client():
+def send_lobbies_to_each_client(players_to_ignore: ConnectedClient | Sequence[ConnectedClient] = None):
+    ids_to_ignore: list[int] = []
+    if isinstance(players_to_ignore, ConnectedClient):
+        ids_to_ignore = [players_to_ignore.client_id]
+    elif isinstance(players_to_ignore, Sequence):
+        ids_to_ignore = [player_to_ignore.client_id for player_to_ignore in players_to_ignore]
+
     lobbies_to_send = [lobby.get_lobby_info(False) for lobby in lobbies.values()
                        if not lobby.private and not lobby.current_game]
     for client in clients_connected.values():
-        if client.lobby_in is None:
+        if client.lobby_in is None and client.client_id not in ids_to_ignore:
             server.send(client, Messages.LobbyListMessage(lobbies_to_send))
 
 def listen_to_client(client: ConnectedClient):
@@ -219,43 +243,36 @@ def listen_to_client(client: ConnectedClient):
             print(f"Error: Received ConnectionResetError from {client.address}. Disconnecting.")
             break
 
-        if message.type == Messages.GameDataMessage.type:
+        if message.name == Messages.GameDataMessage.name:
             if client.lobby_in.current_game:
                 client.lobby_in.current_game.on_data_received(client, message.data)
 
-        elif message.type == Messages.LobbyListRequest.type:
+        elif message.name == Messages.LobbyListRequest.name:
             server.send(client, Messages.LobbyListMessage([lobby.get_lobby_info(False) for lobby in lobbies.values()]))
 
-        elif message.type == Messages.CreateLobbyMessage.type:
+        elif message.name == Messages.CreateLobbyMessage.name:
             client.username = message.username
             new_lobby = Lobby(client, message.settings, message.lobby_title, message.private)
             lobbies[new_lobby.lobby_id] = client.lobby_in = new_lobby
             send_lobbies_to_each_client()
 
-        elif message.type == Messages.JoinLobbyMessage.type:
-            # IF EVERYTHING IS WORKING, NONE OF THIS SHOULD BE NEEDED:
-            # if message.lobby_id not in lobbies:
-            #     server.send(client, Messages.CannotJoinLobbyMessage("Lobby no longer exists."))
-            # elif lobbies[message.lobby_id].closed:
-            #     server.send(client, Messages.CannotJoinLobbyMessage("Lobby is now private."))
-            # elif lobbies[message.lobby_id].max_players is not None and \
-            #         len(lobbies[message.lobby_id].player_clients) > lobbies[message.lobby_id].max_players:
-            #     server.send(client, Messages.CannotJoinLobbyMessage("Lobby is full."))
-            # else:
+        elif message.name == Messages.JoinLobbyMessage.name:
+            if message.lobby_id not in lobbies:
+                server.send(client, Messages.KickedFromLobbyMessage("Lobby no longer exists."))
+
             client.lobby_in = lobby = lobbies[message.lobby_id]
             client.username = message.username
             lobby.player_clients.append(client)
             send_lobbies_to_each_client()
             lobby.send_lobby_info_to_members(include_chat=True)
 
-        elif message.type == Messages.DisconnectMessage.type:
+        elif message.name == Messages.DisconnectMessage.name:
             break
 
-        elif message.type == Messages.LeaveLobbyMessage.type:
+        elif message.name == Messages.LeaveLobbyMessage.name:
             client.lobby_in.remove_player(client)
-            client.lobby_in = None
 
-        elif message.type == Messages.ChangeLobbySettingsMessage.type:
+        elif message.name == Messages.ChangeLobbySettingsMessage.name:
             if message.lobby_title != message.unchanged:
                 client.lobby_in.title = message.lobby_title
 
@@ -270,16 +287,14 @@ def listen_to_client(client: ConnectedClient):
                 client.lobby_in.set_game_settings(message.game_settings, message.game_id == message.unchanged)
 
             if message.game_id != message.unchanged:
-                # TODO: Maybe the client and server shouldn't both have their own instances of Game running at the same time?
-                #  Should there be a server-side game class and a client-side game class? They'd both have to store the settings.
                 client.lobby_in.set_game_selected_id(message.game_id)
 
-        elif message.type == Messages.KickPlayerFromLobbyMessage.type:
+        elif message.name == Messages.KickPlayerFromLobbyMessage.name:
             kicked_player = clients_connected[message.client_id]
             kicked_player.lobby_in.remove_player(kicked_player)
             server.send(kicked_player, Messages.KickedFromLobbyMessage())
 
-        elif message.type == Messages.NewChatMessage.type:
+        elif message.name == Messages.NewChatMessage.name:
             CHAT_FORMAT = "<{}> {}"
             chat_message = CHAT_FORMAT.format(client.username, message.message)
 
@@ -292,12 +307,12 @@ def listen_to_client(client: ConnectedClient):
             for member in client.lobby_in.player_clients:
                 server.send(member, Messages.NewChatMessage(chat_message))
 
-        elif message.type == Messages.StartGameStartTimerMessage.type:
+        elif message.name == Messages.StartGameStartTimerMessage.name:
             for client_in_lobby in client.lobby_in.player_clients:
-                if client_in_lobby is not client:
+                if client_in_lobby.client_id != client.client_id:
                     server.send(client_in_lobby, Messages.StartGameStartTimerMessage(message.start_time))
 
-        elif message.type == Messages.StartGameMessage.type:
+        elif message.name == Messages.StartGameMessage.name:
             for client_in_lobby in client.lobby_in.player_clients:
                 clients = [Client(connected_client.username, connected_client.client_id)
                            for connected_client in client.lobby_in.player_clients]
@@ -308,7 +323,7 @@ def listen_to_client(client: ConnectedClient):
                                                                          client.lobby_in.game_selected_id))
             client.lobby_in.clients_with_game_initialized = 0
 
-        elif message.type == Messages.GameInitializedMessage.type:
+        elif message.name == Messages.GameInitializedMessage.name:
             # Once each player's game class has been initialized, they will send this message. Makes sure that the
             # game server doesn't start running unless it knows all game clients are running and can accept messages.
             client.lobby_in.clients_with_game_initialized += 1

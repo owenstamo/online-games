@@ -10,7 +10,40 @@ from games import Game, SnakeGame, PongGame
 
 _ = shared_assets
 
-# TODO: Move all colors to game_assets file.
+class Colors:
+    background_color = (230,) * 3
+
+    button_default_color = (210,) * 3
+    button_mouse_holding_color = (150,) * 3
+    button_mouse_over_color = (190,) * 3
+    button_grayed_out_color = (230,) * 3
+    button_selected_color = (170,) * 3
+
+    text_grayed_out_color = (100,) * 3
+
+    # Do I want to make TextInput be constantly darker while selected, instead of just when held?
+    text_input_default_color = (255,) * 3
+    text_input_mouse_holding_color = (230,) * 3
+    text_input_mouse_over_color = (245,) * 3
+    text_input_error_color = (255, 240, 240)
+
+    lobby_list_element_default_color = (240,) * 3
+    lobby_list_element_mouse_over_color = (230,) * 3
+    lobby_list_element_mouse_holding_color = (200,) * 3
+    lobby_list_element_selected_color = (220,) * 3
+    lobby_list_background_color = (255,) * 3
+
+    lobby_info_background_color = (245,) * 3
+
+    game_settings_background_color = (190,) * 3
+    chat_container_background_color = (190,) * 3
+    chat_notification_color = (255, 0, 0)
+
+    player_list_element_default_color = (240,) * 3
+    player_list_element_mouse_over_color = (230,) * 3
+    player_list_element_mouse_holding_color = (200,) * 3
+    player_list_element_selected_color = (220,) * 3
+    player_list_background_color = (255,) * 3
 
 class InputTypes:
     class Input:
@@ -39,8 +72,9 @@ class InputTypes:
     class NumberInput(Input):
         DEFAULT_VALUE = 0
         INPUT_ID = InputTypeIDs.NUMBER_INPUT
-        # TODO: Move colors to game_assets for here vvv and in SwitchInput
-        TEXT_INPUT_MOUSE_FUNCTIONS = get_button_functions((255,) * 3, (245,) * 3, (230,) * 3)
+        TEXT_INPUT_MOUSE_FUNCTIONS = get_button_functions(Colors.text_input_default_color,
+                                                          Colors.text_input_mouse_over_color,
+                                                          Colors.text_input_mouse_holding_color)
 
         def constrain_number(self):
             self.value = constrain(self.value, self.min_number, self.max_number)
@@ -82,7 +116,7 @@ class InputTypes:
         INPUT_ID = InputTypeIDs.SWITCH_INPUT
         DEFAULT_TRUE_TEXT = "True"
         DEFAULT_FALSE_TEXT = "False"
-        button_mouse_functions = get_button_functions((210,) * 3, (150,) * 3, (190,) * 3)
+        button_mouse_functions = get_button_functions(Colors.button_default_color, Colors.button_mouse_over_color, Colors.button_mouse_holding_color)
 
         def __init__(self,
                      update_value_func,
@@ -102,7 +136,7 @@ class InputTypes:
             self.button_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
             self.button_element = self.container_element.add_element(Gui.Rect(
-                col=(210,) * 3, **self.button_mouse_functions
+                col=Colors.button_default_color, **self.button_mouse_functions
             ))
             self.button_text = self.button_element.add_element(Gui.Text(
                 self.true_text if default_value else self.false_text, on_draw_before=get_auto_center_function()
