@@ -7,13 +7,13 @@ class Colors:
     light_gray = (230, 230, 230)
     gray = (200, 200, 200)
 
-class ImmutableVert:
+class AnyVert:
     """Vertex that can store any amount of floating point or integer values,
        with functionality for value-wise operations (e.g. <2, 3> * <4, 5> = <8, 15>)"""
 
     @classmethod
     def get_list(cls, *components):
-        if isinstance(components[0], ImmutableVert):
+        if isinstance(components[0], AnyVert):
             if len(components) > 1:
                 raise TypeError("Input may only contain list OR values")
             return cls.get_list(*components[0].list)
@@ -29,7 +29,7 @@ class ImmutableVert:
 
     def __init__(self, *components):
         self._list = self.get_list(*components)
-        self.vert_type = ImmutableVert
+        self.vert_type = AnyVert
 
     @property
     def list(self):
@@ -98,7 +98,7 @@ class ImmutableVert:
         return "<" + ", ".join([str(i) for i in self._list]) + ">"
 
     def __add__(self, other):
-        if isinstance(other, ImmutableVert):
+        if isinstance(other, AnyVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
             return self.vert_type([self._list[i] + other.list[i] for i in range(self.len)])
@@ -111,7 +111,7 @@ class ImmutableVert:
         return self + other
 
     def __mul__(self, other):
-        if isinstance(other, ImmutableVert):
+        if isinstance(other, AnyVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
             return self.vert_type([self._list[i] * other.list[i] for i in range(self.len)])
@@ -124,7 +124,7 @@ class ImmutableVert:
         return self * other
 
     def __sub__(self, other):
-        if isinstance(other, ImmutableVert):
+        if isinstance(other, AnyVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
             return self.vert_type([self._list[i] - other.list[i] for i in range(self.len)])
@@ -137,7 +137,7 @@ class ImmutableVert:
         return self * (-1) + other
 
     def __truediv__(self, other):
-        if isinstance(other, ImmutableVert):
+        if isinstance(other, AnyVert):
             if self.len != other.len:
                 raise ValueError("Length of vertices must be the same")
             return self.vert_type([self._list[i] / other.list[i] for i in range(self.len)])
@@ -147,7 +147,7 @@ class ImmutableVert:
             raise ValueError("Can only divide by numbers or other vertices")
 
     def __rtruediv__(self, other):
-        if isinstance(other, ImmutableVert):
+        if isinstance(other, AnyVert):
             return self / other
         elif isinstance(other, (float, int)):
             return self.vert_type([other / component for component in self._list])
@@ -170,7 +170,7 @@ class ImmutableVert:
         return self.vert_type([round(i, n) for i in self._list])
 
     def __eq__(self, other):
-        if not isinstance(other, ImmutableVert) or other.len != self.len:
+        if not isinstance(other, AnyVert) or other.len != self.len:
             return False
         for i in range(len(self._list)):
             if self._list[i] != other.list[i]:
@@ -178,7 +178,7 @@ class ImmutableVert:
         return True
 
     def __mod__(self, other):
-        if isinstance(other, ImmutableVert):
+        if isinstance(other, AnyVert):
             if other.len != self.len:
                 raise IndexError("Vert lengths are not the same")
             return self.vert_type([self._list[i] % other.list[i] for i in range(self.len)])
@@ -203,7 +203,12 @@ class ImmutableVert:
             new_list += [constrain(this_val, bottom_val, top_val)]
         return Vert(new_list)
 
-class Vert(ImmutableVert):
+class IVert(AnyVert):
+    def __init__(self, *components):
+        super().__init__(components)
+        self.vert_type = IVert
+
+class Vert(AnyVert):
     def __init__(self, *components):
         super().__init__(components)
         self.vert_type = Vert

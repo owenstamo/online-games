@@ -42,11 +42,21 @@ class GameServer:
         self._on_game_over()
         for client in self.clients:
             self.server.send(client, Messages.GameOverMessage())
+
+    @property
+    def host_client(self):
+        return self._host_client
+
+    @host_client.setter
+    def host_client(self, value):
+        old_host = self._host_client
+        self._host_client = value
+        self.on_host_transfer(old_host)
     # endregion
 
     # region Automatically called functions to override
 
-    # Call to super.__init__(*args) required!
+    # Call to super.__init__(*args) required for __init__!
     def __init__(self,
                  server: Server,
                  settings: GameAssets.Settings,
@@ -56,13 +66,15 @@ class GameServer:
         self.server: Server = server
         self.settings = settings
         self.clients: list[ConnectedClient] = clients
-        self.host_client: ConnectedClient = host_client
+        self._host_client: ConnectedClient = host_client
 
         self.game_running = True
         self._on_game_over = on_game_over
 
         self.time_of_last_frame = 0
         self.seconds_per_frame = 1 / self.FPS if self.FPS else None
+
+        self.start_time = time.time()
 
     def on_game_start(self):
         ...
@@ -75,6 +87,9 @@ class GameServer:
 
     def on_client_disconnect(self, client):
         ...
+
+    def on_host_transfer(self, old_host: ConnectedClient):
+        print(f"host has been transferred from {old_host.username} to {self.host_client.username}")
     # endregion
 
 class SnakeServer(GameServer):

@@ -116,7 +116,6 @@ class InputTypes:
         INPUT_ID = InputTypeIDs.SWITCH_INPUT
         DEFAULT_TRUE_TEXT = "True"
         DEFAULT_FALSE_TEXT = "False"
-        button_mouse_functions = get_button_functions(Colors.button_default_color, Colors.button_mouse_over_color, Colors.button_mouse_holding_color)
 
         def __init__(self,
                      update_value_func,
@@ -133,6 +132,7 @@ class InputTypes:
                 self.value = not self.value
                 self.update_value()
 
+            self.button_mouse_functions = get_button_functions(Colors.button_default_color, Colors.button_mouse_over_color, Colors.button_mouse_holding_color)
             self.button_mouse_functions["on_mouse_up"].append(element_on_mouse_up)
 
             self.button_element = self.container_element.add_element(Gui.Rect(

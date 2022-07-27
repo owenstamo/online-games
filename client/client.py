@@ -16,24 +16,17 @@ from network import Network
 from utilities import Vert
 
 _ = shared_assets
+
 # Lock canvas size when in game with non-variable canvas size
 # In the Game class, specify the canvas size / if it's variable
 # Make Game class an abstractmethod, individual games inherit from it. Stores settings, etc.
 
-# TODO: If I restart server with clients connected (in a lobby, maybe), then one client creates a new lobby and changes
-#  the game (to pong), when the next client goes into the multiplayer menu it shows No Game Selected.
-#  it might even happen normally even if you don't restart server with clients connected.
-
-# TODO: All chat messages must be sent to client when client joins. When sending new chat messages, only send the new
-#  ones. They may only be added to the chat after being sent back to the client who sent them.
-# TODO: Capitalize constant variables
-
-# TODO: Fix the timer when someone joins/leaves/changes settings/promotes while it's counting down
-#  Yeah did I ever fix that? Wasn't it doing something funky? (like I was calling it from a bad place, so it was either called too much or too little)
-
 # TODO: pygame.error: pygame_Blit: Surfaces must not be locked during blit
+#  I looked around and couldn't find any times that I blit in a thread, so idk. I guess just wait and see if this error comes up again.
 
 # TODO: Start button game text not resizing sometimes. (Like when I start when the canvas is small)
+
+# TODO: Options should save to/read from file.
 
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
@@ -46,7 +39,6 @@ listening_for_messages = False
 username: str = ""
 max_username_length = 18
 max_lobby_name_length = 30
-# TODO: Let player change this vv in options. Options should save to/read from file.
 default_lobby_title = "New Lobby"
 
 def get_default_username():
@@ -892,7 +884,7 @@ class LobbyRoom(Menu):
     def set_game_start_button_text(self):
         ...
 
-    def initialize_game_settings(self, old_room: LobbyRoom | None = None):
+    def initialize_game_settings(self):
         self.game_setting_containers = []
         for i in range(len(self._game_selected.settings.settings)):
             self.game_setting_containers.append(Gui.BoundingContainer())
@@ -910,7 +902,7 @@ class LobbyRoom(Menu):
         self._host_id = value
 
     def set_lobby_info(self, lobby_info: Messages.LobbyInfo):
-        changed_game = False
+        game_changed = False
 
         if self.private != lobby_info.private:
             self.private = lobby_info.private
@@ -918,9 +910,10 @@ class LobbyRoom(Menu):
             self.lobby_title_text.text = lobby_info.lobby_title
         if self._game_selected.asset_class.game_id != lobby_info.game_id:
             self.game_selected = game_datas_by_id[lobby_info.game_id]()
-            changed_game = True
+            game_changed = True
         if lobby_info.chat:
             self.chat_text.text = lobby_info.chat
+        # I am quite sure that the if statement below can be optimized
         # noinspection PyUnresolvedReferences
         if (lobby_info.game_settings is None and self._game_selected.settings is not None) or \
                 (lobby_info.game_settings is not None and self._game_selected.settings is None) or \
@@ -928,7 +921,7 @@ class LobbyRoom(Menu):
                  and lobby_info.game_settings.settings != self._game_selected.settings.settings):
             self._game_selected.settings = lobby_info.game_settings
             self.update_setting_text()
-            if not changed_game:
+            if not game_changed:
                 # If game has been changed, that means the start button text has already been updated, and we do not need to do so again.
                 self.time_of_start_button_click = None
                 self.set_game_start_button_text()
@@ -940,8 +933,11 @@ class LobbyRoom(Menu):
         self._host_id = lobby_info.host[1]
         self.set_player_list(lobby_info.players)
         self.host_id = lobby_info.host[1]
+        if GameHandler.current_game:
+            GameHandler.current_game.host_client = self.host_id
 
-    def set_player_list(self, value: list[tuple[str, int]] | list[LobbyRoom.ConnectedPlayer]):
+    def set_player_list(self, value: list[tuple[str, int]] | list[LobbyRoom.ConnectedPlayer], due_to_gui_change=False):
+        p_players_connected = set(self.player_list)
         value = [(player.name, player.client_id) if isinstance(player, LobbyRoom.ConnectedPlayer) else player
                  for player in value]
 
@@ -977,6 +973,10 @@ class LobbyRoom(Menu):
                     corresponding_player.status = status
 
         self.resize_player_list_elements()
+
+        if p_players_connected != set(self.player_list) and not due_to_gui_change:
+            self.time_of_start_button_click = None
+            self.set_game_start_button_text()
 
     @property
     def private(self):
@@ -1189,23 +1189,21 @@ class HostLobbyRoom(LobbyRoom):
                 self.button_mouse_functions["on_mouse_down"][0](element, *_)
 
         def grayable_element_on_mouse_up(element, *_):
-            if element in [self.kick_player_button, self.promote_player_button] and not self.player_action_buttons_grayed \
-                    or element is self.game_start_button and self.can_start_game and self.time_of_start_button_click is None:
-                self.button_mouse_functions["on_mouse_up"][0](element, *_)
+            if element is self.kick_player_button and not self.player_action_buttons_grayed:
+                network.send(Messages.KickPlayerFromLobbyMessage(self.player_selected.client_id))
+            elif element is self.promote_player_button and not self.player_action_buttons_grayed:
+                if self.player_selected.client_id != self._host_id:
+                    self.host_id = self.player_selected.client_id
+                    network.send(Messages.ChangeLobbySettingsMessage(host_id=self.player_selected.client_id))
+            elif element is self.game_start_button and self.can_start_game and self.time_of_start_button_click is None:
+                self.time_of_start_button_click = time.time()
+                self.game_start_button.col = Colors.button_default_color
+                self.update_countdown()
+                network.send(Messages.StartGameStartTimerMessage(self.time_of_start_button_click))
+            else:
+                return
 
-                if element is self.promote_player_button:
-                    if self.player_selected.client_id != self._host_id:
-                        self.host_id = self.player_selected.client_id
-                        network.send(Messages.ChangeLobbySettingsMessage(host_id=self.player_selected.client_id))
-                elif element is self.kick_player_button:
-                    network.send(Messages.KickPlayerFromLobbyMessage(self.player_selected.client_id))
-                elif element is self.game_start_button:
-                    # TODO: After clicking, countdown should occur. Don't worry about game settings etc. changing, just
-                    #  send all info after countdown is over. Consider case where ownership is transferred during countdown
-                    self.time_of_start_button_click = time.time()
-                    self.game_start_button.col = Colors.button_default_color
-                    self.update_countdown()
-                    network.send(Messages.StartGameStartTimerMessage(self.time_of_start_button_click))
+            self.button_mouse_functions["on_mouse_up"][0](element, *_)
 
         def host_element_on_mouse_up(element, *_):
             if element is self.toggle_private_button:
@@ -1327,7 +1325,7 @@ class HostLobbyRoom(LobbyRoom):
         self.time_of_last_lobby_title_change = 0
 
         if old_room:
-            self.set_player_list(old_room.player_list)
+            self.set_player_list(old_room.player_list, True)
         else:
             self.set_player_list([(username, network.client_id)])
         self.player_action_buttons_grayed = True
@@ -1351,24 +1349,18 @@ class HostLobbyRoom(LobbyRoom):
 
         self.resize_game_start_text()
 
-    def set_player_list(self, value: list[tuple[str, int]] | list[LobbyRoom.ConnectedPlayer]):
-        p_players_connected = set(self.player_list)
-        super().set_player_list(value)
+    def set_player_list(self, value: list[tuple[str, int]] | list[LobbyRoom.ConnectedPlayer], due_to_gui_change=False):
+        super().set_player_list(value, due_to_gui_change)
         if self._player_selected is not None and self._player_selected not in self.player_list:
             self._player_selected = None
         self.set_player_action_buttons_grayed()
-        if p_players_connected != set(self.player_list):
-            self.time_of_start_button_click = None
-            self.set_game_start_button_text()
 
-    def initialize_game_settings(self, old_room: LobbyRoom | None = None):
-        super().initialize_game_settings(old_room)
+    def initialize_game_settings(self):
+        super().initialize_game_settings()
 
         self.setting_element_contents = []
         for i, setting_item in enumerate(self._game_selected.settings.settings.items()):
             setting_name, setting_val = setting_item
-            if old_room:
-                setting_val = old_room.game_selected.settings.settings[setting_name]
             setting_display_text, setting_type_id, default_value, setting_args = \
                 self._game_selected.settings.setting_info_list[setting_name]
 
@@ -1382,6 +1374,7 @@ class HostLobbyRoom(LobbyRoom):
             ))
 
             def get_update_setting_input_func(setting_name_to_set):
+
                 def update_setting_input(value):
                     if value != self._game_selected.settings.settings[setting_name_to_set]:
                         self._game_selected.settings.settings[setting_name_to_set] = value
@@ -1421,7 +1414,8 @@ class HostLobbyRoom(LobbyRoom):
 
         if network.client_id != self._host_id:
             Menus.lobby_room_menu = MemberLobbyRoom(self)
-            Menus.set_active_menu(Menus.lobby_room_menu)
+            if not GameHandler.current_game:
+                Menus.set_active_menu(Menus.lobby_room_menu)
 
     @property
     def private(self):
@@ -1530,16 +1524,14 @@ class MemberLobbyRoom(LobbyRoom):
         # endregion
 
         if old_room:
-            self.set_player_list(old_room.player_list)
+            self.set_player_list(old_room.player_list, True)
 
-    def initialize_game_settings(self, old_room: LobbyRoom | None = None):
-        super().initialize_game_settings(old_room)
+    def initialize_game_settings(self):
+        super().initialize_game_settings()
 
         self.setting_text = []
         for i, setting_item in enumerate(self._game_selected.settings.settings.items()):
             setting_name, setting_val = setting_item
-            if old_room:
-                setting_val = old_room.game_selected.settings.settings[setting_name]
 
             setting_display_text = self._game_selected.settings.setting_info_list[setting_name][0]
             auto_center = get_auto_center_function(offset_scaled_by_element_height=Vert(0.2, 0), align=["LEFT", "CENTER"])
@@ -1591,7 +1583,8 @@ class MemberLobbyRoom(LobbyRoom):
 
         if network.client_id == self._host_id:
             Menus.lobby_room_menu = HostLobbyRoom(self)
-            Menus.set_active_menu(Menus.lobby_room_menu)
+            if not GameHandler.current_game:
+                Menus.set_active_menu(Menus.lobby_room_menu)
 
     def set_lobby_info(self, lobby_info: Messages.LobbyInfo):
         old_lobby_title_text = self.lobby_title_text.text
@@ -1653,7 +1646,6 @@ class GameHandler:
     def end_game():
         def after_resize():
             GameHandler.current_game = None
-            # TODO: vvv What if another player gets promoted to host while in game
             Menus.set_active_menu(Menus.lobby_room_menu)
         if GameHandler.window_size_before_game_start:
             resize_canvas(GameHandler.window_size_before_game_start, True, after_resize)
@@ -1761,12 +1753,14 @@ def message_listener():
                 listening_for_messages = False
                 return
         elif message.name == Messages.LobbyListMessage.name:
-            if not isinstance(Menus.menu_active, LobbyRoom) and Menus.menu_active is not None:
+            if isinstance(Menus.menu_active, MultiplayerMenu):
                 Menus.multiplayer_menu.set_lobbies(message.lobbies)
         elif message.name == Messages.LobbyInfoMessage.name:
             if isinstance(Menus.menu_active, LobbyRoom):
+                # If the player is in a lobby, set the currently active lobby's info
                 Menus.menu_active.set_lobby_info(message.lobby_info)
             elif GameHandler.current_game and Menus.lobby_room_menu:
+                # If the player is in a game but there is still an instance of a lobby menu stored, set that lobby's info
                 Menus.lobby_room_menu.set_lobby_info(message.lobby_info)
         elif message.name == Messages.KickedFromLobbyMessage.name:
             Menus.set_active_menu(Menus.multiplayer_menu)
@@ -1814,8 +1808,8 @@ def on_frame():
         canvas.fill(Colors.background_color)
         Menus.menu_active.gui.draw(canvas)
 
-        if Menus.menu_active:
-            Menus.mouse_event_handler.main(Menus.menu_active.gui)
+        Menus.mouse_event_handler.main(Menus.menu_active.gui)
+        # Must use extra if statement, as calling the mouse event handler may change the active menu (and potentially make it None)
         if Menus.menu_active:
             Menus.keyboard_event_handler.main(Menus.menu_active.gui)
 

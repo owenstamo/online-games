@@ -1,15 +1,14 @@
 from __future__ import annotations
 import math
 import time
-from utilities import ImmutableVert, Vert, Colors
+from utilities import IVert, AnyVert, Vert, Colors
 from typing import Sequence, Callable
 import pygame
 import copy
 
-# When clicking off of a text_input onto another text_input, it doesn't deselect the first
+# TODO: When clicking off of a text_input onto another text_input, it doesn't deselect the first
 
-# Kinda need to figure out the deal with immutable verts vs verts, tuples vs lists, etc.
-# TODO: Make immutable immutable verts good (like a child of vert or something pls)
+# Should probably deal with the whole tuples vs lists thing but it's not too important.
 # TODO: Add gui elements you can scroll in (I'm sorry future me)
 #        Or just don't. That's an equally valid thing to do.
 
@@ -40,12 +39,12 @@ def align_handler(text_align):
 
 class Gui:
     class BoundingBox:
-        def __init__(self, pos: Vert | ImmutableVert = Vert(0, 0), size: Vert | ImmutableVert = Vert(0, 0)):
-            self.pos = pos
-            self.size = size
+        def __init__(self, pos: AnyVert = Vert(0, 0), size: AnyVert = Vert(0, 0)):
+            self.pos = Vert(pos)
+            self.size = Vert(size)
 
         def __add__(self, other):
-            if isinstance(other, ImmutableVert):
+            if isinstance(other, AnyVert):
                 return Gui.BoundingBox(self.pos + other, self.size)
             elif isinstance(other, Gui.BoundingBox):
                 return Gui.BoundingBox(self.pos + other.pos, self.size + other.size)
@@ -54,7 +53,7 @@ class Gui:
 
         @property
         def top_left(self):
-            return self.pos
+            return Vert(self.pos)
 
         @property
         def top_right(self):
@@ -81,7 +80,7 @@ class Gui:
 
     class GuiElement:
 
-        def __init__(self, pos: ImmutableVert,
+        def __init__(self, pos: AnyVert,
                      on_draw_before: Sequence[Callable] | Callable | None = None,
                      on_draw_after: Sequence[Callable] | Callable | None = None,
                      ignore_bounding_box: bool = False, ignored_by_mouse: bool = False, active: bool = True, **_):
@@ -93,7 +92,7 @@ class Gui:
             :param on_draw_after: A function or list of functions called right after element is drawn. When called, the passed parameters are: the element being drawn, the position of the element, and the size of the element.
             :param ignore_bounding_box: Whether to ignore this element's bounding box when making calculations. Does not ignore any potential children's bounding boxes.
             """
-            self._pos: ImmutableVert = pos
+            self._pos: IVert = IVert(pos)
             self.active: bool = active
             self.on_draw_before: list[Callable] = get_list_of_input(on_draw_before)
 
@@ -103,7 +102,7 @@ class Gui:
             self._ignore_bounding_box: bool = ignore_bounding_box
             self.ignored_by_mouse: bool = ignored_by_mouse
 
-        def draw(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0), force_draw: bool = False):
+        def draw(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0), force_draw: bool = False):
             if self.active or force_draw:
                 for func in self.on_draw_before:
                     func(self, self.bounding_box)
@@ -113,15 +112,15 @@ class Gui:
                 for func in self.on_draw_after:
                     func(self, self.bounding_box)
 
-        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0)):
             pass
 
-        def mouse_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0), force_check: bool = False):
+        def mouse_over(self, mouse_pos: AnyVert, parent_absolute_pos: AnyVert = Vert(0, 0), force_check: bool = False):
             if (self.active or force_check) and not self.ignored_by_mouse:
                 return self.mouse_over_element(mouse_pos - parent_absolute_pos)
             return False
 
-        def mouse_over_element(self, mouse_pos: Vert):
+        def mouse_over_element(self, mouse_pos: AnyVert):
             # Following line is present so that the interpreter does not complain
             _, _ = self, mouse_pos
             return False
@@ -181,19 +180,19 @@ class Gui:
 
         @property
         def pos(self):
-            return self._pos
+            return IVert(self._pos)
 
         @pos.setter
         def pos(self, value):
-            if not isinstance(value, ImmutableVert) or value.len != 2:
+            if not isinstance(value, AnyVert) or value.len != 2:
                 raise ValueError(f"Input pos ({value}) must be Vert of length 2")
             prev_value = self._pos
-            self._pos = ImmutableVert(value)
+            self._pos = IVert(value)
             if self.parent is not None and prev_value != self._pos:
                 self.parent.reevaluate_bounding_box()
 
     class ContainerElement(GuiElement):
-        def __init__(self, pos: ImmutableVert = Vert(0, 0),
+        def __init__(self, pos: AnyVert = Vert(0, 0),
                      contents: Gui.GuiElement | Sequence[Gui.GuiElement] | None = None,
                      **kwargs):
             """
@@ -283,7 +282,7 @@ class Gui:
             if self.parent is not None:
                 self.parent.reevaluate_bounding_box()
 
-        def get_element_over(self, mouse_pos: Vert, parent_absolute_pos: Vert = Vert(0, 0)):
+        def get_element_over(self, mouse_pos: AnyVert, parent_absolute_pos: AnyVert = Vert(0, 0)):
             if self.active:
                 for element in reversed(self._contents):
                     if isinstance(element, Gui.ContainerElement):
@@ -316,20 +315,20 @@ class Gui:
         """
         A container element that has a custom bounding box. Acts basically like a Rect, but without drawing or mouse interaction.
         """
-        def __init__(self, pos: Vert = Vert(0, 0), size: Vert = Vert(0, 0), **kwargs):
-            self._size: Vert = size
+        def __init__(self, pos: AnyVert = Vert(0, 0), size: AnyVert = Vert(0, 0), **kwargs):
+            self._size: IVert = IVert(size)
             super().__init__(pos, **kwargs)
 
         @property
         def size(self):
-            return self._size
+            return IVert(self._size)
 
         @size.setter
         def size(self, value):
-            if not isinstance(value, ImmutableVert) or value.len != 2:
+            if not isinstance(value, AnyVert) or value.len != 2:
                 raise ValueError(f"Input size ({value}) must be Vert of length 2")
             prev_value = self._size
-            self._size = ImmutableVert(value)
+            self._size = IVert(value)
             if prev_value != self._size:
                 self.reevaluate_bounding_box()
 
@@ -398,7 +397,7 @@ class Gui:
         def drag_boundary(self, value):
             if self.drag_parent is None:
                 raise ValueError("This element does not have a drag parent.")
-            if isinstance(value, ImmutableVert):
+            if isinstance(value, AnyVert):
                 value = Gui.BoundingBox(Vert(0, 0), value)
             if value is None:
                 if self.drag_parent.parent is None:
@@ -449,8 +448,8 @@ class Gui:
     class Rect(ContainerElement, Shape, MouseInteractable):
 
         # TODO: Don't take immutable vert as an input
-        def __init__(self, pos: ImmutableVert = Vert(0, 0),
-                           size: ImmutableVert = Vert(0, 0),
+        def __init__(self, pos: AnyVert = Vert(0, 0),
+                           size: AnyVert = Vert(0, 0),
                            col: tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
             A gui element that can be drawn and interacted with as a square. A subclass of ContainerElement, Shape, and MouseInteractable.
@@ -459,32 +458,32 @@ class Gui:
             :param size: A vertex storing the width and height of this rectangle.
             :param col: Color of this rectangle.
             """
-            self._size: ImmutableVert = size
+            self._size: IVert = IVert(size)
             Gui.ContainerElement.__init__(self, pos=pos, **kwargs)
             Gui.Shape.__init__(self, col=col, **kwargs)
             Gui.MouseInteractable.__init__(self, **kwargs)
 
-        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0)):
             if not self.no_fill:
                 pygame.draw.rect(canvas, self.col, (self._pos + parent_absolute_pos).list + self._size.list)
             if self.stroke_weight > 0:
                 pygame.draw.rect(canvas, self.stroke_col, (self._pos + parent_absolute_pos).list + self._size.list,
                                  self.stroke_weight)
 
-        def mouse_over_element(self, mouse_pos: Vert):
+        def mouse_over_element(self, mouse_pos: AnyVert):
             return self._pos.x < mouse_pos.x < self._pos.x + self._size.x and \
                    self._pos.y < mouse_pos.y < self._pos.y + self._size.y
 
         @property
         def size(self):
-            return self._size
+            return IVert(self._size)
 
         @size.setter
         def size(self, value):
-            if not isinstance(value, ImmutableVert) or value.len != 2:
+            if not isinstance(value, AnyVert) or value.len != 2:
                 raise ValueError(f"Input size ({value}) must be Vert of length 2")
             prev_value = self._size
-            self._size = ImmutableVert(value)
+            self._size = IVert(value)
             if prev_value != self._size:
                 self.reevaluate_bounding_box()
 
@@ -493,9 +492,9 @@ class Gui:
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class Image(Rect):
-        def __init__(self, pos: ImmutableVert = Vert(0, 0),
+        def __init__(self, pos: AnyVert = Vert(0, 0),
                            image: pygame.Surface = None,
-                           size: ImmutableVert = None,
+                           size: AnyVert = None,
                            stroke_weight: int = 0,
                            stroke_col: tuple[int, int, int] = Colors.black, **kwargs):
             """
@@ -506,7 +505,7 @@ class Gui:
             :param image: The image this element draws.
             """
             self._image = None
-            self._size: ImmutableVert = size if size else (Vert(image.get_size()) if image else Vert(0, 0))
+            self._size: IVert = IVert(size) if size else (IVert(image.get_size()) if image else IVert(0, 0))
             Gui.ContainerElement.__init__(self, pos=pos, **kwargs)
             Gui.MouseInteractable.__init__(self, **kwargs)
             self.unscaled_image = image
@@ -514,27 +513,27 @@ class Gui:
             self.stroke_weight = stroke_weight
             self.stroke_col = stroke_col
 
-        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0)):
             if self._image:
                 canvas.blit(self._image, (self._pos + parent_absolute_pos).list)
             if self.stroke_weight > 0:
                 pygame.draw.rect(canvas, self.stroke_col, (self._pos + parent_absolute_pos).list + self._size.list,
                                  self.stroke_weight)
 
-        def mouse_over_element(self, mouse_pos: Vert):
+        def mouse_over_element(self, mouse_pos: AnyVert):
             return self._pos.x < mouse_pos.x < self._pos.x + self._size.x and \
                    self._pos.y < mouse_pos.y < self._pos.y + self._size.y
 
         @property
         def size(self):
-            return self._size
+            return IVert(self._size)
 
         @size.setter
         def size(self, value):
-            if not isinstance(value, ImmutableVert) or value.len != 2:
+            if not isinstance(value, AnyVert) or value.len != 2:
                 raise ValueError(f"Input size ({value}) must be Vert of length 2")
             prev_value = self._size
-            self._size = ImmutableVert(value)
+            self._size = IVert(value)
             if prev_value != self._size and self._image:
                 self._image = pygame.transform.scale(self.unscaled_image, self.size.list)
 
@@ -553,7 +552,7 @@ class Gui:
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class Circle(ContainerElement, Shape, MouseInteractable):
-        def __init__(self, pos: Vert = ImmutableVert(0, 0),
+        def __init__(self, pos: AnyVert = Vert(0, 0),
                            rad: int = 0,
                            col: tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
@@ -568,13 +567,13 @@ class Gui:
             Gui.Shape.__init__(self, col, **kwargs)
             Gui.MouseInteractable.__init__(self, **kwargs)
 
-        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0)):
             if not self.no_fill:
                 pygame.draw.circle(canvas, self.col, (self._pos + parent_absolute_pos).list, self._rad)
             if self.stroke_weight > 0:
                 pygame.draw.circle(canvas, self.stroke_col, (self._pos + parent_absolute_pos).list, self._rad, self.stroke_weight)
 
-        def mouse_over_element(self, mouse_pos: Vert):
+        def mouse_over_element(self, mouse_pos: AnyVert):
             return math.dist(mouse_pos.list, self._pos.list) <= self._rad
 
         @property
@@ -595,7 +594,7 @@ class Gui:
     class Text(GuiElement):
         HEIGHT_ADJUSTMENT = 0.05
 
-        def __init__(self, text: str = "", pos: ImmutableVert = ImmutableVert(0, 0), font_size: int = 0,
+        def __init__(self, text: str = "", pos: AnyVert = Vert(0, 0), font_size: int = 0,
                      font: str = "calibri", col: tuple[int, int, int] = (0, 0, 0),
                      text_align: Sequence[str, str] = ("CENTER", "CENTER"),
                      antialias: bool = True, ignore_bounding_box=True, adjust_height=True, **kwargs):
@@ -612,7 +611,7 @@ class Gui:
             :param adjust_height: Whether to adjust this element's height to be more accurate (pygame usually draws text higher than what looks correct)
             """
 
-            self._pos = pos
+            self._pos: IVert = IVert(pos)
             self._draw_pos = Vert(0, 0)
             self.rendered_size = Vert(0, 0)
             self.adjust_height = adjust_height
@@ -661,14 +660,14 @@ class Gui:
 
         @property
         def pos(self):
-            return self._pos
+            return IVert(self._pos)
 
         @pos.setter
         def pos(self, value):
-            if not isinstance(value, ImmutableVert) or value.len != 2:
+            if not isinstance(value, AnyVert) or value.len != 2:
                 raise ValueError(f"Input pos ({value}) must be Vert of length 2")
             prev_value = self._pos
-            self._pos = ImmutableVert(value)
+            self._pos = IVert(value)
             if prev_value != self._pos:
                 self.calculate_pos()
 
@@ -740,7 +739,7 @@ class Gui:
             if prev_value != self._text_align:
                 self.calculate_pos()
 
-        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0)):
             canvas.blit(self.rendered_font, self._draw_pos + parent_absolute_pos)
 
         @property
@@ -864,7 +863,7 @@ class Gui:
             super().create_font_object()
             self.text = self.text
 
-        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0)):
             line_offset = 0
 
             for i, rendered_font_line in enumerate(self.rendered_font):
@@ -886,7 +885,7 @@ class Gui:
         USERNAME_CHARS = ALPHABET + NUMBERS + "_"
         WHOLE_KEYBOARD = tuple(SHIFTED_CHARS.keys()) + tuple(SHIFTED_CHARS.values()) + (" ",)
 
-        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: Vert = Vert(0, 0)):
+        def draw_element(self, canvas: pygame.Surface, parent_absolute_pos: AnyVert = Vert(0, 0)):
             estimated_default_size = self.text_element.size_per_font_size * self.default_font_size
             bounding_box_size = self.bounding_box.size - Vert(self.text_padding, 0) * 2
 
@@ -914,8 +913,8 @@ class Gui:
                                  int(self.cursor_width_multiplier * self.text_element.font_size / 15))
 
         def __init__(self,
-                     pos: Vert = Vert(0, 0),
-                     size: Vert = Vert(0, 0),
+                     pos: AnyVert = Vert(0, 0),
+                     size: AnyVert = Vert(0, 0),
                      text: str = "",
                      valid_chars=WHOLE_KEYBOARD,
                      valid_input_func: Callable = lambda inp: True,
@@ -944,9 +943,9 @@ class Gui:
 
             # Number to be multiplied by this element's text's height to find its left and right padding
             self.text_padding_scalar = 0.25
-            text_offset = {"LEFT": Vert(self.text_padding_scalar, 0),
-                           "CENTER": Vert(0, 0),
-                           "RIGHT": Vert(-self.text_padding_scalar, 0)}[horizontal_align]
+            text_offset = {"LEFT": AnyVert(self.text_padding_scalar, 0),
+                           "CENTER": AnyVert(0, 0),
+                           "RIGHT": AnyVert(-self.text_padding_scalar, 0)}[horizontal_align]
             self.text_element = Gui.Text(empty_text if text == "" else self.true_text,
                                          text_align=[horizontal_align, "CENTER"],
                                          on_draw_before=get_auto_center_function(
@@ -1028,12 +1027,12 @@ class Gui:
 
         @property
         def size(self):
-            return self._size
+            return IVert(self._size)
 
         @size.setter
         def size(self, value):
             prev_value = self._size
-            self._size = ImmutableVert(value)
+            self._size = IVert(value)
 
             self.default_font_size = int(value.y * 0.75)
             self.text_element.font_size = self.default_font_size
@@ -1054,11 +1053,11 @@ class Gui:
 # TODO: Find some way to not have to call this every time an element is drawn, only when its parent bounding box changes size
 def get_auto_center_function(element_centered_on: Gui.GuiElement | None = None,
                              align: list[str, str] = ("CENTER", "CENTER"),
-                             constant_offset: Vert = Vert(0, 0),
-                             offset_scaled_by_element_width: Vert = Vert(0, 0),
-                             offset_scaled_by_element_height: Vert = Vert(0, 0),
-                             offset_scaled_by_parent_width: Vert = Vert(0, 0),
-                             offset_scaled_by_parent_height: Vert = Vert(0, 0)):
+                             constant_offset: AnyVert = Vert(0, 0),
+                             offset_scaled_by_element_width: AnyVert = Vert(0, 0),
+                             offset_scaled_by_element_height: AnyVert = Vert(0, 0),
+                             offset_scaled_by_parent_width: AnyVert = Vert(0, 0),
+                             offset_scaled_by_parent_height: AnyVert = Vert(0, 0)):
     """
     Returns a function to be called before an element is drawn, that sets the elements position depending on the parameters passed.
 

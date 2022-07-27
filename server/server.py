@@ -20,7 +20,7 @@ class Lobby:
         self.lobby_id = Lobby.available_lobby_id
         Lobby.available_lobby_id += 1
 
-        self._title: str = title
+        self.title: str = title
 
         self._host_client: ConnectedClient = host
         self.player_clients: list[ConnectedClient] = [host]
@@ -30,7 +30,7 @@ class Lobby:
         self.max_players = 10
         self.chat_messages: list[str] = []
 
-        self._private = private
+        self.private = private
         # self.password = None
 
         self.clients_with_game_initialized: int = 0
@@ -42,45 +42,9 @@ class Lobby:
 
     @host_client.setter
     def host_client(self, value: ConnectedClient):
-        old_host = self._host_client
         self._host_client = value
-        self.send_lobby_info_to_members(old_host)
-        send_lobbies_to_each_client()
-
-    @property
-    def private(self):
-        return self._private
-
-    @private.setter
-    def private(self, value: bool):
-        self._private = value
-        self.send_lobby_info_to_members(self._host_client)
-        send_lobbies_to_each_client()
-
-    @property
-    def title(self):
-        return self._title
-
-    @title.setter
-    def title(self, value):
-        self._title = value
-        self.send_lobby_info_to_members(self._host_client)
-        send_lobbies_to_each_client()
-
-    def set_game_selected_id(self, value, send_to_clients=True):
-        self.game_selected_id = value
-        if send_to_clients:
-            self.send_lobby_info_to_members(self._host_client)
-            send_lobbies_to_each_client()
-
-    def set_game_settings(self, new_settings, send_to_clients=True):
-        self.game_settings = new_settings
-        if "max_players" in new_settings.settings and new_settings.settings["max_players"] != self.max_players:
-            self.max_players = new_settings.settings["max_players"]
-            if send_to_clients:
-                send_lobbies_to_each_client()
-        if send_to_clients:
-            self.send_lobby_info_to_members(self._host_client)
+        if self.current_game:
+            self.current_game.host_client = value
 
     def remove_player(self, player: ConnectedClient):
         for i, client_in_lobby in enumerate(self.player_clients):
@@ -94,7 +58,7 @@ class Lobby:
             return
 
         if player.client_id is self._host_client.client_id:
-            self._host_client = self.player_clients[0]
+            self.host_client = self.player_clients[0]
 
         if self.current_game:
             self.current_game.on_client_disconnect_private(player)
@@ -105,14 +69,14 @@ class Lobby:
     def get_lobby_info(self, include_in_lobby_info=True, include_chat=False):
         parameters = {
             "lobby_id": self.lobby_id,
-            "lobby_title": self._title,
+            "lobby_title": self.title,
             "host": (self._host_client.username, self._host_client.client_id),
             "players": [(client.username, client.client_id) for client in self.player_clients],
             "game_id": self.game_selected_id,
             "max_players": self.max_players
         }
         if include_in_lobby_info:
-            parameters["private"] = self._private
+            parameters["private"] = self.private
             parameters["game_settings"] = self.game_settings
         if include_chat:
             parameters["chat"] = self.chat_messages
@@ -139,6 +103,7 @@ class Lobby:
                                                                       self.player_clients,
                                                                       self._host_client,
                                                                       on_game_end)
+
         _thread.start_new_thread(self.current_game.on_game_start, ())
         _thread.start_new_thread(self.current_game.call_on_frame, ())
         send_lobbies_to_each_client()
@@ -197,6 +162,9 @@ class Server:
     def recv(client):
         try:
             incoming_message = client.conn.recv(4096)
+        except (ConnectionAbortedError, ConnectionResetError) as err:
+            print(f"Could not find client at address {client.address} ({repr(err)}). Assuming client is disconnected.")
+            return Messages.DisconnectMessage()
         except Exception as err:
             print(f"Error: Error when attempting to receive message from client at address {client.address}: {repr(err)}")
             return Messages.ErrorMessage(err)
@@ -237,11 +205,7 @@ def send_lobbies_to_each_client(players_to_ignore: ConnectedClient | Sequence[Co
 
 def listen_to_client(client: ConnectedClient):
     while True:
-        try:
-            message = server.recv(client)
-        except ConnectionResetError:
-            print(f"Error: Received ConnectionResetError from {client.address}. Disconnecting.")
-            break
+        message = server.recv(client)
 
         if message.name == Messages.GameDataMessage.name:
             if client.lobby_in.current_game:
@@ -273,6 +237,8 @@ def listen_to_client(client: ConnectedClient):
             client.lobby_in.remove_player(client)
 
         elif message.name == Messages.ChangeLobbySettingsMessage.name:
+            old_host = client.lobby_in.host_client
+
             if message.lobby_title != message.unchanged:
                 client.lobby_in.title = message.lobby_title
 
@@ -283,11 +249,21 @@ def listen_to_client(client: ConnectedClient):
                 client.lobby_in.host_client = clients_connected[message.host_id]
 
             if message.game_settings != message.unchanged:
-                # Don't send data to clients yet if game_id has also been changed. Wait until it changes as well before sending data.
-                client.lobby_in.set_game_settings(message.game_settings, message.game_id == message.unchanged)
+                client.lobby_in.game_settings = message.game_settings
 
             if message.game_id != message.unchanged:
-                client.lobby_in.set_game_selected_id(message.game_id)
+                client.lobby_in.game_selected_id = message.game_id
+
+            if {message.lobby_title, message.private, message.host_id, message.game_id} != {message.unchanged}:
+                client.lobby_in.send_lobby_info_to_members(old_host)
+                send_lobbies_to_each_client()
+            elif message.game_settings != message.unchanged:
+                # If the game settings were the only thing changed, we only need to send the lobbies to each client
+                # (that is out of the lobby) if the max players changed. Otherwise, it would be useless.
+                client.lobby_in.send_lobby_info_to_members(old_host)
+                if "max_players" in message.game_settings.settings and message.game_settings.settings["max_players"] != client.lobby_in.max_players:
+                    client.lobby_in.max_players = message.game_settings.settings["max_players"]
+                    send_lobbies_to_each_client()
 
         elif message.name == Messages.KickPlayerFromLobbyMessage.name:
             kicked_player = clients_connected[message.client_id]
