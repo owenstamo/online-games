@@ -157,6 +157,7 @@ class Server:
 
         print(f"  [S] Sent message of type {message.name} to address {client.address}")
         # TODO: I'm catching all errors, but what if I dont want to?
+        #  (I'm getting some spammed unpickling errors (ran out of input, from some random IP). I should fix that)
 
     @staticmethod
     def recv(client):
@@ -223,12 +224,16 @@ def listen_to_client(client: ConnectedClient):
         elif message.name == Messages.JoinLobbyMessage.name:
             if message.lobby_id not in lobbies:
                 server.send(client, Messages.KickedFromLobbyMessage("Lobby no longer exists."))
-
-            client.lobby_in = lobby = lobbies[message.lobby_id]
-            client.username = message.username
-            lobby.player_clients.append(client)
-            send_lobbies_to_each_client()
-            lobby.send_lobby_info_to_members(include_chat=True)
+            elif lobbies[message.lobby_id].current_game:
+                server.send(client, Messages.KickedFromLobbyMessage("Game already started."))
+            elif lobbies[message.lobby_id].private:
+                server.send(client, Messages.KickedFromLobbyMessage("Lobby is private."))
+            else:
+                client.lobby_in = lobby = lobbies[message.lobby_id]
+                client.username = message.username
+                lobby.player_clients.append(client)
+                send_lobbies_to_each_client()
+                lobby.send_lobby_info_to_members(include_chat=True)
 
         elif message.name == Messages.DisconnectMessage.name:
             break

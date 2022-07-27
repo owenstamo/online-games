@@ -28,6 +28,8 @@ _ = shared_assets
 
 # TODO: Options should save to/read from file.
 
+# TODO: I could gray out the Join Lobby button if a lobby is full
+
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
 pygame.display.set_caption("Online games and all that jazz.")
@@ -194,9 +196,7 @@ class TitleScreenMenu(Menu):
 
         self.game_title = Gui.Text("GAME :>")
 
-        # TODO: I tried to make a child of create_lobby_button with drag_parent=create_lobby_button & it crashed
-
-        self.gui.add_element(self.button_list + [self.game_title])
+        self.gui.add_element(*self.button_list, self.game_title)
 
     def resize_elements(self):
         canvas_size = Vert(canvas.get_size())
@@ -550,7 +550,6 @@ class MultiplayerMenu(Menu):
                 lobby = self.connected_lobbies[i]
                 if lobby.lobby_id not in incoming_lobbies_by_id:
                     self.lobby_list_background.remove_element(lobby.list_gui_element)
-                    # TODO: Check if commenting this next line doesn't break everything
                     self.resize_lobby_list_elements()
 
                     if lobby is self.selected_lobby:
@@ -950,7 +949,6 @@ class LobbyRoom(Menu):
                 player = self.player_list[i]
                 if player.client_id not in incoming_player_names_by_id:
                     self.player_list_container.remove_element(player.list_gui_element)
-                    # TODO: Check if commenting the next line as well doesnt break everything
                     self.resize_player_list_elements()
 
                     del self.player_list[i]
@@ -1225,7 +1223,7 @@ class HostLobbyRoom(LobbyRoom):
                 network.send(Messages.ChangeLobbySettingsMessage(lobby_title=self.lobby_title.text))
 
         def lobby_title_on_key_input(keycode):
-            delay_between_title_changes = 1
+            delay_between_title_changes = 0.1
 
             def wait_then_change():
                 time.sleep(delay_between_title_changes + self.time_of_last_lobby_title_change - time.time())

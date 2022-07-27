@@ -101,7 +101,7 @@ class InputTypes:
 
         @property
         def value(self):
-            return int(self.text_input_element.text)
+            return int(self.text_input_element.text) if self.text_input_element.text else 0
 
         @value.setter
         def value(self, value):
