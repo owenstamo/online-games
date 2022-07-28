@@ -175,7 +175,7 @@ class GameAssets:
         # "setting_name": ("InputTypes.INPUT_TYPE", default_value)
         setting_info_list = {
             "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 10, {"min_number": 1, "max_number": 99}),
-            "other_setting": ("Other Setting:", InputTypeIDs.SWITCH_INPUT, False, {})
+            "allow_teacher_mode": ("Allow Teacher Mode:", InputTypeIDs.SWITCH_INPUT, True, {})
         }
         """Dictionary in format: {"setting_name": (setting_text, InputTypeIDs.INPUT_TYPE, default_value, initialization_arguments)}"""
 

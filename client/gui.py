@@ -116,6 +116,11 @@ class Gui:
             pass
 
         def mouse_over(self, mouse_pos: AnyVert, parent_absolute_pos: AnyVert = Vert(0, 0), force_check: bool = False):
+            """
+            Function that calculates whether the mouse is over this element. Ignores any obstructions.
+            If this element is a MouseInteractable, self.mouse_is_over contains whether the mouse is directly on this element, taking obstructions into account.
+            :param: force_check: Whether to check this element even if it is not active.
+            """
             if (self.active or force_check) and not self.ignored_by_mouse:
                 return self.mouse_over_element(mouse_pos - parent_absolute_pos)
             return False
@@ -282,13 +287,29 @@ class Gui:
             if self.parent is not None:
                 self.parent.reevaluate_bounding_box()
 
+        def mouse_over(self, mouse_pos: AnyVert, parent_absolute_pos: AnyVert = Vert(0, 0), force_check: bool = False):
+            """
+            Function that calculates whether the mouse is over this element or any child elements. Ignores any obstructions.
+            If this element is a MouseInteractable, self.mouse_is_over contains whether the mouse is directly on this element, taking obstructions into account.
+            :param: force_check: Whether to check this element even if it is not active.
+            """
+            if (self.active or force_check) and not self.ignored_by_mouse:
+                if self.mouse_over_element(mouse_pos - parent_absolute_pos):
+                    return True
+                else:
+                    for child_element in self.contents:
+                        if child_element.mouse_over(mouse_pos, parent_absolute_pos + self.pos):
+                            return True
+            return False
+
         def get_element_over(self, mouse_pos: AnyVert, parent_absolute_pos: AnyVert = Vert(0, 0)):
             if self.active:
                 for element in reversed(self._contents):
                     if isinstance(element, Gui.ContainerElement):
                         if element_over := element.get_element_over(mouse_pos, parent_absolute_pos + self._pos):
                             return element_over
-                    if element.mouse_over(mouse_pos, self._pos + parent_absolute_pos):
+                    if element.mouse_over_element(mouse_pos - self._pos - parent_absolute_pos) \
+                            and element.active and not element.ignored_by_mouse:
                         return element
             return None
 
@@ -447,7 +468,6 @@ class Gui:
 
     class Rect(ContainerElement, Shape, MouseInteractable):
 
-        # TODO: Don't take immutable vert as an input
         def __init__(self, pos: AnyVert = Vert(0, 0),
                            size: AnyVert = Vert(0, 0),
                            col: tuple[int, int, int] = (255, 255, 255), **kwargs):

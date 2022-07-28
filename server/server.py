@@ -191,6 +191,11 @@ def delete_lobby(lobby: Lobby, player_to_ignore: ConnectedClient = None):
 
     send_lobbies_to_each_client(lobby.player_clients + [player_to_ignore] if player_to_ignore else [])
 
+def get_lobby_infos_to_send(include_inaccessible_lobbies=False):
+    return [lobby.get_lobby_info(False) for lobby in lobbies.values()
+            if (not lobby.private and lobby.current_game is None) or include_inaccessible_lobbies]
+
+
 def send_lobbies_to_each_client(players_to_ignore: ConnectedClient | Sequence[ConnectedClient] = None):
     ids_to_ignore: list[int] = []
     if isinstance(players_to_ignore, ConnectedClient):
@@ -198,11 +203,9 @@ def send_lobbies_to_each_client(players_to_ignore: ConnectedClient | Sequence[Co
     elif isinstance(players_to_ignore, Sequence):
         ids_to_ignore = [player_to_ignore.client_id for player_to_ignore in players_to_ignore]
 
-    lobbies_to_send = [lobby.get_lobby_info(False) for lobby in lobbies.values()
-                       if not lobby.private and not lobby.current_game]
     for client in clients_connected.values():
         if client.lobby_in is None and client.client_id not in ids_to_ignore:
-            server.send(client, Messages.LobbyListMessage(lobbies_to_send))
+            server.send(client, Messages.LobbyListMessage(get_lobby_infos_to_send()))
 
 def listen_to_client(client: ConnectedClient):
     while True:
@@ -213,7 +216,7 @@ def listen_to_client(client: ConnectedClient):
                 client.lobby_in.current_game.on_data_received(client, message.data)
 
         elif message.name == Messages.LobbyListRequest.name:
-            server.send(client, Messages.LobbyListMessage([lobby.get_lobby_info(False) for lobby in lobbies.values()]))
+            server.send(client, Messages.LobbyListMessage(get_lobby_infos_to_send()))
 
         elif message.name == Messages.CreateLobbyMessage.name:
             client.username = message.username
@@ -244,31 +247,37 @@ def listen_to_client(client: ConnectedClient):
         elif message.name == Messages.ChangeLobbySettingsMessage.name:
             old_host = client.lobby_in.host_client
 
+            send_lobby_info = send_lobby_list = False
+
             if message.lobby_title != message.unchanged:
                 client.lobby_in.title = message.lobby_title
+                send_lobby_info = send_lobby_list = True
 
             if message.private != message.unchanged:
                 client.lobby_in.private = message.private
+                send_lobby_info = send_lobby_list = True
 
             if message.host_id != message.unchanged:
                 client.lobby_in.host_client = clients_connected[message.host_id]
+                send_lobby_info = send_lobby_list = True
 
             if message.game_settings != message.unchanged:
                 client.lobby_in.game_settings = message.game_settings
+                send_lobby_info = True
+                if "max_players" in message.game_settings.settings and message.game_settings.settings["max_players"] != client.lobby_in.max_players:
+                    client.lobby_in.max_players = message.game_settings.settings["max_players"]
+                    send_lobby_list = True
+                    # If the game settings were the only thing changed, we only need to send the lobbies to each client
+                    # (that is out of the lobby) if the max players changed. Otherwise, it would be useless.
 
             if message.game_id != message.unchanged:
                 client.lobby_in.game_selected_id = message.game_id
+                send_lobby_info = send_lobby_list = True
 
-            if {message.lobby_title, message.private, message.host_id, message.game_id} != {message.unchanged}:
+            if send_lobby_info:
                 client.lobby_in.send_lobby_info_to_members(old_host)
+            if send_lobby_list:
                 send_lobbies_to_each_client()
-            elif message.game_settings != message.unchanged:
-                # If the game settings were the only thing changed, we only need to send the lobbies to each client
-                # (that is out of the lobby) if the max players changed. Otherwise, it would be useless.
-                client.lobby_in.send_lobby_info_to_members(old_host)
-                if "max_players" in message.game_settings.settings and message.game_settings.settings["max_players"] != client.lobby_in.max_players:
-                    client.lobby_in.max_players = message.game_settings.settings["max_players"]
-                    send_lobbies_to_each_client()
 
         elif message.name == Messages.KickPlayerFromLobbyMessage.name:
             kicked_player = clients_connected[message.client_id]

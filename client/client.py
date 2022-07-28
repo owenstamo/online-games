@@ -17,18 +17,19 @@ from utilities import Vert
 
 _ = shared_assets
 
-# Lock canvas size when in game with non-variable canvas size
-# In the Game class, specify the canvas size / if it's variable
-# Make Game class an abstractmethod, individual games inherit from it. Stores settings, etc.
-
 # TODO: pygame.error: pygame_Blit: Surfaces must not be locked during blit
 #  I looked around and couldn't find any times that I blit in a thread, so idk. I guess just wait and see if this error comes up again.
 
 # TODO: Start button game text not resizing sometimes. (Like when I start when the canvas is small)
+#  Don't know what I was talking about here ^
 
-# TODO: Options should save to/read from file.
+# TODO: Options and username should save to/read from file.
 
 # TODO: I could gray out the Join Lobby button if a lobby is full
+
+# TODO: Make the cross-game settings transfer between games when you switch
+
+# TODO: Can't create empty Vert, can't create empty Gui.Text
 
 pygame.init()
 canvas = pygame.display.set_mode((600, 450), pygame.RESIZABLE)
@@ -53,7 +54,7 @@ def get_default_username():
     adjectives = ["wandering", "accurate", "mature", "sordid", "ambitious", "chilly", "hard", "shaggy", "stupendous",
                   "handsome", "awesome", "dramatic", "straight", "vivacious", "offbeat", "enormous", "transgender",
                   "woebegone", "civil", "wise", "puffy", "nostalgic", "angry", "lying", "panoramic", "endearing",
-                  "marvelous", "boring", "splendid", "wet", "popular", "dark", "intense", "pink", "unlikely",
+                  "marvelous", "boring", "splendid", "wet", "popular", "dark", "intense", "pink", "gay",
                   "tiresome", "fearless", "proud", "rustic", "soft", "large", "explicit", "possessed", "influential"]
     verbs = ["retiring", "hiding", "observing", "waiting", "crashing", "departing", "transitioning",
              "arriving", "jumping", "suspecting", "functioning", "accounting", "preparing", "spoiling",
@@ -1198,6 +1199,7 @@ class HostLobbyRoom(LobbyRoom):
                 self.game_start_button.col = Colors.button_default_color
                 self.update_countdown()
                 network.send(Messages.StartGameStartTimerMessage(self.time_of_start_button_click))
+                return
             else:
                 return
 
@@ -1641,10 +1643,11 @@ class Menus:
 
 class GameHandler:
     @staticmethod
-    def end_game():
+    def end_game(go_to_lobby_room=True):
         def after_resize():
             GameHandler.current_game = None
-            Menus.set_active_menu(Menus.lobby_room_menu)
+            if go_to_lobby_room:
+                Menus.set_active_menu(Menus.lobby_room_menu)
         if GameHandler.window_size_before_game_start:
             resize_canvas(GameHandler.window_size_before_game_start, True, after_resize)
         else:
@@ -1652,6 +1655,11 @@ class GameHandler:
 
     @classmethod
     def start_game(cls, game_data: GameData, clients: list[Client], host_client: Client):
+        def on_game_leave():
+            cls.end_game(False)
+            network.send(Messages.LeaveLobbyMessage())
+            Menus.set_active_menu(Menus.multiplayer_menu)
+
         def after_resize():
             cls.current_game = game_data.game_class(canvas,
                                                     network,
@@ -1659,7 +1667,9 @@ class GameHandler:
                                                     clients,
                                                     host_client,
                                                     Client(network.client_id, username),
-                                                    cls.end_game)
+                                                    cls.end_game,
+                                                    on_game_leave,
+                                                    Colors)
             Menus.set_active_menu(None)
 
         if game_data.window_size:
@@ -1672,7 +1682,7 @@ class GameHandler:
     @staticmethod
     def game_on_mouse_down_func(button):
         if GameHandler.current_game:
-            GameHandler.current_game.on_mouse_down(button)
+            GameHandler.current_game.on_mouse_down_private(button)
 
     @staticmethod
     def game_on_mouse_up_func(button):
@@ -1682,7 +1692,7 @@ class GameHandler:
     @staticmethod
     def game_while_mouse_down_func(button):
         if GameHandler.current_game:
-            GameHandler.current_game.while_mouse_down(button)
+            GameHandler.current_game.while_mouse_down_private(button)
 
     @staticmethod
     def game_while_mouse_up_func(button):
@@ -1796,8 +1806,11 @@ def on_frame():
 
     if GameHandler.current_game:
         GameHandler.current_game.on_frame()
+        if GameHandler.current_game.gui:
+            GameHandler.current_game.gui.draw(canvas)
         GameHandler.mouse_event_handler.main(GameHandler.current_game.gui)
-        GameHandler.keyboard_event_handler.main(GameHandler.current_game.gui)
+        if GameHandler.current_game:
+            GameHandler.keyboard_event_handler.main(GameHandler.current_game.gui)
 
     if isinstance(Menus.menu_active, LobbyRoom):
         Menus.menu_active.update_countdown()
@@ -1824,6 +1837,10 @@ def main():
             elif event.type == pygame.WINDOWRESIZED:
                 if Menus.menu_active:
                     Menus.menu_active.resize_elements()
+                if GameHandler.current_game:
+                    GameHandler.current_game.resize_menu_button()
+                    GameHandler.current_game.resize_menu()
+                    GameHandler.current_game.on_window_resize()
 
         on_frame()
 

@@ -60,8 +60,21 @@ class AnyVert:
     @property
     def w(self):
         if self.len < 4:
-            raise IndexError("Vertex is not 4D")
-        return self._list[3]
+            return self._list[0]
+        else:
+            return self._list[3]
+
+    @property
+    def h(self):
+        if self.len < 1:
+            raise IndexError("Vertex is not 2D")
+        return self._list[1]
+
+    @property
+    def d(self):
+        if self.len < 3:
+            raise IndexError("Vertex is not 3D")
+        return self._list[2]
 
     @property
     def magnitude(self):
@@ -266,8 +279,29 @@ class Vert(AnyVert):
     @w.setter
     def w(self, value):
         if self.len < 4:
-            raise IndexError("Vertex is not 4D")
-        self._list[3] = value
+            self._list[0] = value
+        else:
+            self._list[3] = value
+
+    @property
+    def h(self):
+        return super().y
+
+    @h.setter
+    def h(self, value):
+        if self.len < 2:
+            raise IndexError("Vertex is not 2D")
+        self._list[1] = value
+
+    @property
+    def d(self):
+        return super().z
+
+    @d.setter
+    def d(self, value):
+        if self.len < 3:
+            raise IndexError("Vertex is not 3D")
+        self._list[2] = value
 
 class Colliding:
     @staticmethod
