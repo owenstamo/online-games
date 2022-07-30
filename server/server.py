@@ -6,6 +6,7 @@ from typing import Sequence
 import shared_assets
 from shared_assets import GameAssets, Messages, port, max_chat_messages, Client
 from server_assets import GameServer, game_servers_by_id
+import io
 
 _ = shared_assets
 
@@ -127,6 +128,9 @@ class Server:
     def __init__(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         port_to_try = self.DEFAULT_PORT
+        self.buffer: list[tuple] = []
+        self.handling_buffer = False
+        self.clients_waiting_for_connection: list[int] = []
         while True:
             try:
                 self.socket.bind(("", port_to_try))
@@ -139,48 +143,85 @@ class Server:
         print("Server started, waiting for client(s) to connect")
 
     @staticmethod
-    def send(client, message: Messages.Message):
+    def send(client, message: Messages.Message) -> bool:
+        if not isinstance(message, Messages.Message):
+            raise TypeError("Message must be a child of the Message class.")
+
         try:
             outgoing_message = pickle.dumps(message)
         except Exception as err:
             print(f"Error: Error when attempting to pickle {message.name}: {repr(err)}")
-            return
+            return False
 
         try:
             client.conn.sendall(outgoing_message)
         except ConnectionResetError:
             print(f"Error: Attempted to send message of type {message.name} to closed client at address {client.address}. This is likely not an issue.")
-            return
+            return False
         except Exception as err:
             print(f"Error: Error when attempting to send {message.name} to client at address {client.address}: {repr(err)}")
-            return
+            return False
 
-        print(f"  [S] Sent message of type {message.name} to address {client.address}")
+        if message.notify_to_console:
+            print(f"  [S] Sent message of type {message.name} to address {client.address}")
+
+        return True
         # TODO: I'm catching all errors, but what if I dont want to?
         #  (I'm getting some spammed unpickling errors (ran out of input, from some random IP). I should fix that)
 
-    @staticmethod
-    def recv(client):
+    # def check_connection(self, client):
+    #     if client.client_id in self.clients_waiting_for_connection:
+    #         print("Running connection check on client at address {client.address}. This was likely due to invalid data being sent.")
+    #         self.clients_waiting_for_connection.append(client.client_id)
+    #         self.send(client, Messages.CheckConnectionMessage())
+
+    def handle_buffer(self):
+        def handle_received_data(client, received_data):
+            if client.client_id not in clients_listening_to:
+                return
+
+            data_pieces = []
+            try:
+                unpickler = pickle.Unpickler(io.BytesIO(received_data))
+                while True:
+                    data_pieces.append(unpickler.load())
+            except EOFError:
+                ...
+            except Exception as err:
+                print(f"Error: Error when attempting to unpickle message from client at address {client.address}: {repr(err)}")
+                return process_message(Messages.ErrorMessage(err), client)
+
+            for data_piece in data_pieces:
+                process_message(data_piece, client)
+
+        while self.buffer:
+            _thread.start_new_thread(handle_received_data, (self.buffer[0][0], self.buffer[0][1]))
+            self.buffer.pop(0)
+        self.handling_buffer = False
+
+    def recv(self, client):
         try:
             incoming_message = client.conn.recv(4096)
         except (ConnectionAbortedError, ConnectionResetError) as err:
-            print(f"Could not find client at address {client.address} ({repr(err)}). Assuming client is disconnected.")
-            return Messages.DisconnectMessage()
+            if client.client_id in clients_listening_to:
+                print(f"Could not find client at address {client.address} ({repr(err)}). Assuming client is disconnected.")
+                clients_listening_to.remove(client.client_id)
+            return
         except Exception as err:
-            print(f"Error: Error when attempting to receive message from client at address {client.address}: {repr(err)}")
-            return Messages.ErrorMessage(err)
+            if client.client_id in clients_listening_to:
+                print(f"Error: Error when attempting to receive message from client at address {client.address}: {repr(err)}")
+                process_message(Messages.ErrorMessage(err), client)
+            return
 
-        try:
-            message = pickle.loads(incoming_message)
-        except Exception as err:
-            print(f"Error: Unable to unpickle message from client at address {client.address}: {repr(err)}")
-            return Messages.ErrorMessage(err)
-
-        print(f"  [R] Received message of type {message.name} from address {client.address}")
-        return message
+        if client.client_id in clients_listening_to and incoming_message:
+            self.buffer.append((client, incoming_message))
+            if not self.handling_buffer:
+                self.handling_buffer = True
+                _thread.start_new_thread(self.handle_buffer, ())
 
 
 clients_connected: dict[int, ConnectedClient] = {}
+clients_listening_to: list[int] = []
 
 def delete_lobby(lobby: Lobby, player_to_ignore: ConnectedClient = None):
     for client in lobby.player_clients:
@@ -207,120 +248,130 @@ def send_lobbies_to_each_client(players_to_ignore: ConnectedClient | Sequence[Co
         if client.lobby_in is None and client.client_id not in ids_to_ignore:
             server.send(client, Messages.LobbyListMessage(get_lobby_infos_to_send()))
 
-def listen_to_client(client: ConnectedClient):
-    while True:
-        message = server.recv(client)
+def process_message(message: Messages.Message, client: ConnectedClient):
+    if not isinstance(message, Messages.Message):
+        print(f"Error: Received data that is not a Message class from client at address {client.address}")
+        return process_message(Messages.ErrorMessage(), client)
 
-        if message.name == Messages.GameDataMessage.name:
-            if client.lobby_in.current_game:
-                client.lobby_in.current_game.on_data_received(client, message.data)
+    if message.notify_to_console:
+        print(f"  [R] Received message of type {message.name} from address {client.address}")
 
-        elif message.name == Messages.LobbyListRequest.name:
-            server.send(client, Messages.LobbyListMessage(get_lobby_infos_to_send()))
+    if isinstance(message, Messages.GameDataMessage):
+        if client.lobby_in.current_game:
+            client.lobby_in.current_game.on_data_received(client, message.data)
 
-        elif message.name == Messages.CreateLobbyMessage.name:
+    elif isinstance(message, Messages.LobbyListRequest):
+        server.send(client, Messages.LobbyListMessage(get_lobby_infos_to_send()))
+
+    elif isinstance(message, Messages.CreateLobbyMessage):
+        client.username = message.username
+        new_lobby = Lobby(client, message.settings, message.lobby_title, message.private)
+        lobbies[new_lobby.lobby_id] = client.lobby_in = new_lobby
+        send_lobbies_to_each_client()
+
+    elif isinstance(message, Messages.JoinLobbyMessage):
+        if message.lobby_id not in lobbies:
+            server.send(client, Messages.KickedFromLobbyMessage("Lobby no longer exists."))
+        elif lobbies[message.lobby_id].current_game:
+            server.send(client, Messages.KickedFromLobbyMessage("Game already started."))
+        elif lobbies[message.lobby_id].private:
+            server.send(client, Messages.KickedFromLobbyMessage("Lobby is private."))
+        else:
+            client.lobby_in = lobby = lobbies[message.lobby_id]
             client.username = message.username
-            new_lobby = Lobby(client, message.settings, message.lobby_title, message.private)
-            lobbies[new_lobby.lobby_id] = client.lobby_in = new_lobby
+            lobby.player_clients.append(client)
+            send_lobbies_to_each_client()
+            lobby.send_lobby_info_to_members(include_chat=True)
+
+    elif isinstance(message, Messages.DisconnectMessage):
+        clients_listening_to.remove(client.client_id)
+
+    elif isinstance(message, Messages.LeaveLobbyMessage):
+        client.lobby_in.remove_player(client)
+
+    elif isinstance(message, Messages.ChangeLobbySettingsMessage):
+        old_host = client.lobby_in.host_client
+
+        send_lobby_info = send_lobby_list = False
+
+        if message.lobby_title != message.unchanged:
+            client.lobby_in.title = message.lobby_title
+            send_lobby_info = send_lobby_list = True
+
+        if message.private != message.unchanged:
+            client.lobby_in.private = message.private
+            send_lobby_info = send_lobby_list = True
+
+        if message.host_id != message.unchanged:
+            client.lobby_in.host_client = clients_connected[message.host_id]
+            send_lobby_info = send_lobby_list = True
+
+        if message.game_settings != message.unchanged:
+            client.lobby_in.game_settings = message.game_settings
+            send_lobby_info = True
+            if "max_players" in message.game_settings.settings and message.game_settings.settings["max_players"] != client.lobby_in.max_players:
+                client.lobby_in.max_players = message.game_settings.settings["max_players"]
+                send_lobby_list = True
+                # If the game settings were the only thing changed, we only need to send the lobbies to each client
+                # (that is out of the lobby) if the max players changed. Otherwise, it would be useless.
+
+        if message.game_id != message.unchanged:
+            client.lobby_in.game_selected_id = message.game_id
+            send_lobby_info = send_lobby_list = True
+
+        if send_lobby_info:
+            client.lobby_in.send_lobby_info_to_members(old_host)
+        if send_lobby_list:
             send_lobbies_to_each_client()
 
-        elif message.name == Messages.JoinLobbyMessage.name:
-            if message.lobby_id not in lobbies:
-                server.send(client, Messages.KickedFromLobbyMessage("Lobby no longer exists."))
-            elif lobbies[message.lobby_id].current_game:
-                server.send(client, Messages.KickedFromLobbyMessage("Game already started."))
-            elif lobbies[message.lobby_id].private:
-                server.send(client, Messages.KickedFromLobbyMessage("Lobby is private."))
-            else:
-                client.lobby_in = lobby = lobbies[message.lobby_id]
-                client.username = message.username
-                lobby.player_clients.append(client)
-                send_lobbies_to_each_client()
-                lobby.send_lobby_info_to_members(include_chat=True)
+    elif isinstance(message, Messages.KickPlayerFromLobbyMessage):
+        kicked_player = clients_connected[message.client_id]
+        kicked_player.lobby_in.remove_player(kicked_player)
+        server.send(kicked_player, Messages.KickedFromLobbyMessage())
 
-        elif message.name == Messages.DisconnectMessage.name:
-            break
+    elif isinstance(message, Messages.NewChatMessage):
+        CHAT_FORMAT = "<{}> {}"
+        chat_message = CHAT_FORMAT.format(client.username, message.message)
 
-        elif message.name == Messages.LeaveLobbyMessage.name:
-            client.lobby_in.remove_player(client)
+        client.lobby_in.chat_messages.append(chat_message)
 
-        elif message.name == Messages.ChangeLobbySettingsMessage.name:
-            old_host = client.lobby_in.host_client
+        if len(client.lobby_in.chat_messages) > max_chat_messages:
+            client.lobby_in.chat_messages = \
+                client.lobby_in.chat_messages[len(client.lobby_in.chat_messages) - max_chat_messages:]
 
-            send_lobby_info = send_lobby_list = False
+        for member in client.lobby_in.player_clients:
+            server.send(member, Messages.NewChatMessage(chat_message))
 
-            if message.lobby_title != message.unchanged:
-                client.lobby_in.title = message.lobby_title
-                send_lobby_info = send_lobby_list = True
+    elif isinstance(message, Messages.StartGameStartTimerMessage):
+        for client_in_lobby in client.lobby_in.player_clients:
+            if client_in_lobby.client_id != client.client_id:
+                server.send(client_in_lobby, Messages.StartGameStartTimerMessage(message.start_time))
 
-            if message.private != message.unchanged:
-                client.lobby_in.private = message.private
-                send_lobby_info = send_lobby_list = True
+    elif isinstance(message, Messages.StartGameMessage):
+        for client_in_lobby in client.lobby_in.player_clients:
+            clients = [Client(connected_client.username, connected_client.client_id)
+                       for connected_client in client.lobby_in.player_clients]
+            host_client = Client(client.lobby_in.host_client.username, client.lobby_in.host_client.client_id)
 
-            if message.host_id != message.unchanged:
-                client.lobby_in.host_client = clients_connected[message.host_id]
-                send_lobby_info = send_lobby_list = True
+            server.send(client_in_lobby, Messages.GameStartedMessage(clients,
+                                                                     host_client,
+                                                                     client.lobby_in.game_selected_id))
+        client.lobby_in.clients_with_game_initialized = 0
 
-            if message.game_settings != message.unchanged:
-                client.lobby_in.game_settings = message.game_settings
-                send_lobby_info = True
-                if "max_players" in message.game_settings.settings and message.game_settings.settings["max_players"] != client.lobby_in.max_players:
-                    client.lobby_in.max_players = message.game_settings.settings["max_players"]
-                    send_lobby_list = True
-                    # If the game settings were the only thing changed, we only need to send the lobbies to each client
-                    # (that is out of the lobby) if the max players changed. Otherwise, it would be useless.
+    elif isinstance(message, Messages.GameInitializedMessage):
+        # Once each player's game class has been initialized, they will send this message. Makes sure that the
+        # game server doesn't start running unless it knows all game clients are running and can accept messages.
+        client.lobby_in.clients_with_game_initialized += 1
+        # There's a tiny chance for error if somebody leaves the lobby/crashes before sending in a GameInitializedMessage, but the chance of that happening is miniscule (I hope).
+        # Unless they crash when initializing the game (due to some glitch in the game initialization) (I'm just going to hope that doesn't happen)
+        if client.lobby_in.clients_with_game_initialized >= len(client.lobby_in.player_clients):
+            client.lobby_in.start_game()
 
-            if message.game_id != message.unchanged:
-                client.lobby_in.game_selected_id = message.game_id
-                send_lobby_info = send_lobby_list = True
+def listen_to_client(client: ConnectedClient):
+    clients_listening_to.append(client.client_id)
 
-            if send_lobby_info:
-                client.lobby_in.send_lobby_info_to_members(old_host)
-            if send_lobby_list:
-                send_lobbies_to_each_client()
-
-        elif message.name == Messages.KickPlayerFromLobbyMessage.name:
-            kicked_player = clients_connected[message.client_id]
-            kicked_player.lobby_in.remove_player(kicked_player)
-            server.send(kicked_player, Messages.KickedFromLobbyMessage())
-
-        elif message.name == Messages.NewChatMessage.name:
-            CHAT_FORMAT = "<{}> {}"
-            chat_message = CHAT_FORMAT.format(client.username, message.message)
-
-            client.lobby_in.chat_messages.append(chat_message)
-
-            if len(client.lobby_in.chat_messages) > max_chat_messages:
-                client.lobby_in.chat_messages = \
-                    client.lobby_in.chat_messages[len(client.lobby_in.chat_messages) - max_chat_messages:]
-
-            for member in client.lobby_in.player_clients:
-                server.send(member, Messages.NewChatMessage(chat_message))
-
-        elif message.name == Messages.StartGameStartTimerMessage.name:
-            for client_in_lobby in client.lobby_in.player_clients:
-                if client_in_lobby.client_id != client.client_id:
-                    server.send(client_in_lobby, Messages.StartGameStartTimerMessage(message.start_time))
-
-        elif message.name == Messages.StartGameMessage.name:
-            for client_in_lobby in client.lobby_in.player_clients:
-                clients = [Client(connected_client.username, connected_client.client_id)
-                           for connected_client in client.lobby_in.player_clients]
-                host_client = Client(client.lobby_in.host_client.username, client.lobby_in.host_client.client_id)
-
-                server.send(client_in_lobby, Messages.GameStartedMessage(clients,
-                                                                         host_client,
-                                                                         client.lobby_in.game_selected_id))
-            client.lobby_in.clients_with_game_initialized = 0
-
-        elif message.name == Messages.GameInitializedMessage.name:
-            # Once each player's game class has been initialized, they will send this message. Makes sure that the
-            # game server doesn't start running unless it knows all game clients are running and can accept messages.
-            client.lobby_in.clients_with_game_initialized += 1
-            # There's a tiny chance for error if somebody leaves the lobby/crashes before sending in a GameInitializedMessage, but the chance of that happening is miniscule (I hope).
-            # Unless they crash when initializing the game (due to some glitch in the game initialization) (I'm just going to hope that doesn't happen)
-            if client.lobby_in.clients_with_game_initialized >= len(client.lobby_in.player_clients):
-                client.lobby_in.start_game()
+    while client.client_id in clients_listening_to:
+        server.recv(client)
 
     print(f"Disconnected from {client.address}")
 
@@ -336,9 +387,7 @@ def console_commands():
             break
 
 def listen_for_clients():
-    while True:
-        conn, address = server.socket.accept()
-
+    def add_client():
         print(f"Connected to {address}")
 
         client_id = 0
@@ -346,9 +395,23 @@ def listen_for_clients():
             client_id += 1
         clients_connected[client_id] = client = ConnectedClient(client_id, conn, address)
 
-        server.send(client, Messages.ConnectedMessage(address, client_id))
+        try:
+            server.send(client, Messages.ConnectedMessage(address, client_id))
 
-        _thread.start_new_thread(listen_to_client, (client,))
+            connected_message = conn.recv(4096)
+            if not isinstance(pickle.loads(connected_message), Messages.ConnectedMessage):
+                raise TypeError("Connected message is not of type ConnectedMessage.")
+        except Exception as err:
+            print(f"Got {repr(err)} when attempting to send/receive connected message from client. Disconnecting client.")
+            del clients_connected[client.client_id]
+            return
+
+        listen_to_client(client)
+
+    while True:
+        conn, address = server.socket.accept()
+
+        _thread.start_new_thread(add_client, ())
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ class Messages:
     # region Base message type
     class Message:
         name = "default_message"
+        notify_to_console = True
     # endregion
 
     # region General server related messages
@@ -46,6 +47,10 @@ class Messages:
 
         def __init__(self):
             ...  # Does this have to include the client's active gui? (it shouldn't and anyway, that would be bad).
+
+    class CheckConnectionMessage(Message):
+        name = "check_connection"
+        notify_to_console = False
     # endregion
 
     # region Multiplayer menu related messages
@@ -140,6 +145,7 @@ class Messages:
     # region Game related messages
     class GameDataMessage(Message):
         name = "game_data_message"
+        notify_to_console = False
 
         def __init__(self, data):
             self.data = data
@@ -151,6 +157,7 @@ class Messages:
     # region Other messages
     class ErrorMessage(Message):
         name = "error"
+        notify_to_console = False
 
         def __init__(self, error=None):
             self.error = error
@@ -206,3 +213,13 @@ class PongAssets:
             **GameAssets.Settings.setting_info_list,
             "max_players": ("Max Players:", InputTypeIDs.NUMBER_INPUT, 2, {"min_number": 1, "max_number": 2})
         }
+
+    class Messages:
+        class BallHit:
+            def __init__(self, ball_pos: tuple | None, ball_vel: tuple | None):
+                self.ball_pos = ball_pos
+                self.ball_vel = ball_vel
+
+        class PaddleMove:
+            def __init__(self, paddle_y):
+                self.paddle_y = paddle_y

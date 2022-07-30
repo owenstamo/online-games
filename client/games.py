@@ -1,32 +1,36 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Sequence
+import _thread
 import pygame
 from gui import Gui, get_button_functions, get_auto_center_function
 from utilities import Vert, Colliding, constrain
+import shared_assets
 
 if TYPE_CHECKING:
-    from client_assets import GameAssets, Colors
+    from client_assets import Colors
     from shared_assets import Client
     from network import Network
 
 class Game:
+    asset_class = shared_assets.GameAssets
+
     # region
-    def while_mouse_down_private(self, button):
+    def while_mouse_down_private(self, button: int):
         if not self.menu.mouse_over(self.mouse_pos) and not self.menu_button.mouse_over(self.mouse_pos):
             self.while_mouse_down(button)
 
-    def on_mouse_down_private(self, button):
+    def on_mouse_down_private(self, button: int):
         if not self.menu.mouse_over(self.mouse_pos) and not self.menu_button.mouse_over(self.mouse_pos):
             self.on_mouse_down(button)
     # endregion
 
     # region Utility functions to call but not override
-    def send_data(self, data):
-        self.network.send(data)
+    def send_data(self, data: any):
+        _thread.start_new_thread(self.network.send, (shared_assets.Messages.GameDataMessage(data),))
 
     @property
-    def host_client(self):
+    def host_client(self) -> Client:
         return self._host_client
 
     @host_client.setter
@@ -55,6 +59,20 @@ class Game:
     @property
     def canvas_size(self) -> Vert:
         return Vert(self.canvas.get_size())
+
+    @property
+    def all_keys_down(self) -> list[int]:
+        return self.get_all_keys_down()
+
+    def key_is_down(self, key_code: int | Sequence[int]):
+        if isinstance(key_code, int):
+            return key_code in self.all_keys_down
+        else:
+            all_keys_down = self.get_all_keys_down()
+            for code in key_code:
+                if code in all_keys_down:
+                    return True
+            return False
     # endregion
 
     # region Automatically called functions to override
@@ -64,12 +82,13 @@ class Game:
     def __init__(self,
                  canvas: pygame.Surface,
                  network: Network,
-                 settings: GameAssets.Settings,
+                 settings: shared_assets.GameAssets.Settings,
                  clients: list[Client],
                  host_client: Client,
                  this_client: Client,
                  on_game_end: Callable,
                  on_game_leave: Callable,
+                 get_all_keys_down: Callable,
                  gui_colors: Colors,
                  menu_button: Gui.GuiElement | None = None,
                  menu: Gui.GuiElement | None = None):
@@ -81,6 +100,7 @@ class Game:
         self.this_client = this_client
         self.on_game_end = on_game_end
         self.on_game_leave = on_game_leave
+        self.get_all_keys_down = get_all_keys_down
         self.gui = Gui.ContainerElement()
 
         if menu is not None:
@@ -173,36 +193,36 @@ class Game:
         for text_element in text_list:
             text_element.font_size = button_size.y * text_scale * 0.75
 
-    def on_data_received(self, data):
+    def on_data_received(self, data: any):
         ...
 
     def on_frame(self):
         self.canvas.fill((245,) * 3)
 
     # This function is not called when the mouse is over the menu or menu_button. Overwrite while_mouse_down_private to get around this.
-    def on_mouse_down(self, button):
+    def on_mouse_down(self, button: int):
         ...
 
-    def on_mouse_up(self, button):
+    def on_mouse_up(self, button: int):
         ...
 
     # This function is not called when the mouse is over the menu or menu_button. Overwrite while_mouse_down_private to get around this.
-    def while_mouse_down(self, button):
+    def while_mouse_down(self, button: int):
         ...
 
-    def while_mouse_up(self, button):
+    def while_mouse_up(self, button: int):
         ...
 
-    def on_key_down(self, key_code):
+    def on_key_down(self, key_code: int):
         ...
 
-    def on_key_up(self, key_code):
+    def on_key_up(self, key_code: int):
         ...
 
-    def while_key_down(self, key_code):
+    def while_key_down(self, key_code: int):
         ...
 
-    def on_key_repeat(self, key_code):
+    def on_key_repeat(self, key_code: int):
         ...
 
     def on_host_transfer(self, old_host: Client):
@@ -213,10 +233,12 @@ class Game:
     # endregion
 
 class SnakeGame(Game):
-    ...
+    asset_class = shared_assets.SnakeAssets
 
 class PongGame(Game):
-    # TODO: This should probably all be stored in shared_assets
+    asset_class = shared_assets.PongAssets
+
+    # TODO: This should probably all be stored in shared_assets(?)
     game_size = Vert(1000, 600)
     ball_size = Vert(35, 35)
     paddle_size = Vert(20, 100)
@@ -230,15 +252,12 @@ class PongGame(Game):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self.ball_pos = Vert(0, 0)
-        self.ball_vel = Vert(6, 6)
+        self.ball_pos = self.game_size / 2 - self.ball_size / 2
+        self.ball_vel = Vert(0, 0)
 
         self.paddle_pos = self.game_size * Vert(9/10, 1/2) - self.paddle_size / 2
-
-        self.w_key = False
-        self.s_key = False
-        self.up_key = False
-        self.down_key = False
+        self.enemy_paddle_target_pos = self.game_size * Vert(1/10, 1/2) - self.paddle_size / 2
+        self.enemy_paddle_pos = Vert(self.enemy_paddle_target_pos)
 
     def get_draw_pos(self, pos) -> Vert:
         if (x_ratio := self.canvas_size.x / self.game_size.x) < (y_ratio := self.canvas_size.y / self.game_size.y):
@@ -256,13 +275,21 @@ class PongGame(Game):
         self.canvas.fill((25,) * 3)
         # TODO: Stuff can kinda poke off the edges of the canvas. I should be drawing the gray after the black.
         pygame.draw.rect(self.canvas, (0,)*3, self.get_draw_rect(Vert(0, 0), self.game_size))
-        # TODO: Ball pos should be changed on server side. Should depend on dt?
+        # TODO: Ball pos should be changed on server side(?). Should depend on dt?
 
-        if self.up_key or self.w_key:
+        prev_paddle_y = self.paddle_pos.y
+        paddle_moved = False
+        if self.key_is_down([pygame.K_w, pygame.K_UP]):
             self.paddle_pos.y -= self.paddle_speed
-        if self.down_key or self.s_key:
+            paddle_moved = True
+        if self.key_is_down([pygame.K_s, pygame.K_DOWN]):
             self.paddle_pos.y += self.paddle_speed
+            paddle_moved = True
+
         self.paddle_pos.y = constrain(self.paddle_pos.y, 0, self.game_size.y - self.paddle_size.y)
+
+        if paddle_moved:  # self.paddle_pos.y != prev_paddle_y:
+            self.send_data(self.asset_class.Messages.PaddleMove(self.paddle_pos.y))
 
         self.ball_pos += self.ball_vel
         self.ball_pos = self.ball_pos.constrained(Vert(0, 0), self.game_size - self.ball_size)
@@ -280,30 +307,21 @@ class PongGame(Game):
             self.ball_pos.y = 0
             self.ball_vel.y *= -1
 
-        if Colliding.square_square(self.ball_pos, self.ball_size, self.paddle_pos, self.paddle_size):
-            self.ball_vel.x = -abs(self.ball_vel.x)
+        if Colliding.square_square(self.ball_pos, self.ball_size, self.paddle_pos, self.paddle_size) and self.ball_vel.x > 0:
+            self.ball_vel.x = -self.ball_vel.x
+            self.send_data(self.asset_class.Messages.BallHit(self.ball_pos.tuple, self.ball_vel.tuple))
+
+        self.enemy_paddle_pos += (self.enemy_paddle_target_pos - self.enemy_paddle_pos) / 3
 
         pygame.draw.rect(self.canvas, (255,)*3, self.get_draw_rect(self.ball_pos, self.ball_size))
         pygame.draw.rect(self.canvas, (255,)*3, self.get_draw_rect(self.paddle_pos, self.paddle_size))
+        pygame.draw.rect(self.canvas, (255,)*3, self.get_draw_rect(self.enemy_paddle_pos, self.paddle_size))
 
-    # TODO: Typehint all overridable parent functions
-    # TODO: Make a getter function for all keys down
-    def on_key_down(self, key_code: int):
-        if key_code == pygame.K_w:
-            self.w_key = True
-        elif key_code == pygame.K_s:
-            self.s_key = True
-        if key_code == pygame.K_UP:
-            self.up_key = True
-        elif key_code == pygame.K_DOWN:
-            self.down_key = True
-
-    def on_key_up(self, key_code: int):
-        if key_code == pygame.K_w:
-            self.w_key = False
-        elif key_code == pygame.K_s:
-            self.s_key = False
-        if key_code == pygame.K_UP:
-            self.up_key = False
-        elif key_code == pygame.K_DOWN:
-            self.down_key = False
+    def on_data_received(self, data):
+        if isinstance(data, self.asset_class.Messages.BallHit):
+            if data.ball_pos:
+                self.ball_pos = Vert(self.game_size.x - data.ball_pos[0] - self.ball_size.x, data.ball_pos[1])
+            if data.ball_vel:
+                self.ball_vel = Vert(-data.ball_vel[0], data.ball_vel[1])
+        elif isinstance(data, self.asset_class.Messages.PaddleMove):
+            self.enemy_paddle_target_pos.y = data.paddle_y

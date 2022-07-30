@@ -1660,6 +1660,9 @@ class GameHandler:
             network.send(Messages.LeaveLobbyMessage())
             Menus.set_active_menu(Menus.multiplayer_menu)
 
+        def get_all_keys_down():
+            return cls.keyboard_event_handler.inputs_down
+
         def after_resize():
             cls.current_game = game_data.game_class(canvas,
                                                     network,
@@ -1669,6 +1672,7 @@ class GameHandler:
                                                     Client(network.client_id, username),
                                                     cls.end_game,
                                                     on_game_leave,
+                                                    get_all_keys_down,
                                                     Colors)
             Menus.set_active_menu(None)
 
@@ -1871,18 +1875,16 @@ def on_server_disconnect():
     network = None
     _thread.start_new_thread(initialize_network, ())
 
-def on_server_connect():
-    """Function to be called when the network connects to a server. Exits the loading menu."""
+def initialize_network():
+    global network
+    network = Network(on_server_not_found, on_server_disconnect)
+
+    # Once the network loads, exit the loading menu if in it.
     if isinstance(Menus.menu_active, ConnectingMenu):
         Menus.menu_active.load_next_menu()
 
     if not listening_for_messages:
         _thread.start_new_thread(message_listener, ())
-
-def initialize_network():
-    global network
-    network = Network(on_server_not_found, on_server_disconnect)
-    on_server_connect()
 
 if __name__ == "__main__":
     # Initialize network class, which automatically connects it to server.

@@ -5,8 +5,8 @@ from typing import Type
 from gui import Gui, get_button_functions, get_auto_center_function
 from utilities import Vert, constrain
 import shared_assets
-from shared_assets import InputTypeIDs, GameAssets, SnakeAssets, PongAssets
-from games import Game, SnakeGame, PongGame
+from shared_assets import InputTypeIDs
+import games
 
 _ = shared_assets
 
@@ -171,8 +171,8 @@ class GameData:
     image: pygame.Surface = pygame.image.load("assets/none_icon.png")
     # TODO: allow_spectators = False
 
-    game_class: Type[Game] = Game
-    asset_class: Type[GameAssets] = GameAssets
+    game_class: Type[games.Game] = games.Game
+    asset_class: Type[shared_assets.GameAssets] = shared_assets.GameAssets
 
     def __init__(self):
         self.settings = self.asset_class.Settings()
@@ -187,8 +187,8 @@ class SnakeData(GameData):
     window_size = (512, 512)
     image: pygame.Surface = pygame.image.load("assets/snake_icon.png")
 
-    game_class = SnakeGame
-    asset_class = SnakeAssets
+    game_class = games.SnakeGame
+    asset_class = shared_assets.SnakeAssets
 
     def ready_to_start(self, players_connected):
         if players_connected < 2:
@@ -203,8 +203,8 @@ class PongData(GameData):
     window_size = None
     image: pygame.Surface = pygame.image.load("assets/pong_icon.png")
 
-    game_class = PongGame
-    asset_class = PongAssets
+    game_class = games.PongGame
+    asset_class = shared_assets.PongAssets
 
     def ready_to_start(self, players_connected):
         if players_connected > self.settings.settings["max_players"]:
@@ -214,4 +214,4 @@ class PongData(GameData):
 
 
 selectable_games: list[Type[GameData]] = [GameData, SnakeData, PongData]
-game_datas_by_id: dict[str, Type[GameData]] = {game.asset_class.game_id: game for game in selectable_games}
+game_datas_by_id: dict[str, Type[GameData]] = {game.game_class.asset_class.game_id: game for game in selectable_games}

@@ -1,13 +1,13 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Type, Callable
-from shared_assets import GameAssets, SnakeAssets, PongAssets, Messages
+import shared_assets
 import time
 
 if TYPE_CHECKING:
     from server import Server, ConnectedClient
 
 class GameServer:
-    asset_class = GameAssets
+    asset_class = shared_assets.GameAssets
     FPS: int | None = None
     """Amount of times per second this game server's on_frame() should be called. Leave 0 or None for never."""
 
@@ -31,7 +31,7 @@ class GameServer:
 
     # region Utility functions to call but not override
     def send_data(self, client: ConnectedClient | list[ConnectedClient], data):
-        self.server.send(client, data)
+        self.server.send(client, shared_assets.Messages.GameDataMessage(data))
 
     def send_data_to_all(self, data):
         for client in self.clients:
@@ -41,7 +41,7 @@ class GameServer:
         self.game_running = False
         self._on_game_over()
         for client in self.clients:
-            self.server.send(client, Messages.GameOverMessage())
+            self.server.send(client, shared_assets.Messages.GameOverMessage())
 
     @property
     def host_client(self):
@@ -59,7 +59,7 @@ class GameServer:
     # Call to super.__init__(*args) required for __init__!
     def __init__(self,
                  server: Server,
-                 settings: GameAssets.Settings,
+                 settings: shared_assets.GameAssets.Settings,
                  clients: list[ConnectedClient],
                  host_client: ConnectedClient,
                  on_game_over: Callable):
@@ -93,10 +93,23 @@ class GameServer:
     # endregion
 
 class SnakeServer(GameServer):
-    asset_class = SnakeAssets
+    asset_class = shared_assets.SnakeAssets
 
 class PongServer(GameServer):
-    asset_class = PongAssets
+    asset_class = shared_assets.PongAssets
+
+    def on_game_start(self):
+        for i, client in enumerate(self.clients):
+            horizontal_dir = i * 2 - 1
+            self.send_data(client, self.asset_class.Messages.BallHit(None, (horizontal_dir * 6, 6)))
+
+    def on_data_received(self, client_from: ConnectedClient, data):
+        if isinstance(data, self.asset_class.Messages.BallHit):
+            print("got data")
+        if isinstance(data, (self.asset_class.Messages.BallHit, self.asset_class.Messages.PaddleMove)):
+            for client in self.clients:
+                if client.client_id != client_from.client_id:
+                    self.send_data(client, data)
 
 
 game_servers: list[Type[GameServer]] = [GameServer, SnakeServer, PongServer]

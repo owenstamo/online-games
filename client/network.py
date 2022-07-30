@@ -35,15 +35,22 @@ class Network:
         print(f"Connected with address {connected_message.address} and client_id {connected_message.client_id}!")
         self.client_id = connected_message.client_id
 
+        self.send(pickle.dumps(shared_assets.Messages.ConnectedMessage(None, None)))
+
     def send(self, message):
+        if not isinstance(message, shared_assets.Messages.Message):
+            raise TypeError("Message must be a child of the Message class.")
+
         try:
             outgoing_message = pickle.dumps(message)
         except Exception as err:
             print(f"Error: Error when attempting to pickle {message.name}: {repr(err)}")
-            return
+            return False
 
         try:
             self.client.send(outgoing_message)
+            if isinstance(message, shared_assets.Messages.GameDataMessage):
+                print(message.data)
         except ConnectionResetError:
             print(f"Could not find server to send message of type {message.name}. Assuming server is disconnected.")
             if self.on_server_disconnect:
@@ -53,7 +60,9 @@ class Network:
             print(f"Error: Error when attempting to send {message.name} to server: {repr(err)}")
             return False
 
-        print(f"  [S] Sent message of type {message.name} to the server")
+        if message.notify_to_console:
+            print(f"  [S] Sent message of type {message.name} to the server")
+
         return True
 
     def recv(self):
@@ -74,5 +83,11 @@ class Network:
             print(f"Error: Unable to unpickle message from server: {repr(err)}")
             return shared_assets.Messages.ErrorMessage(err)
 
-        print(f"  [R] Received message of type {message.name} from server.")
+        if not isinstance(message, shared_assets.Messages.Message):
+            print(f"Error: Received data that is not a Message class from server.")
+            return shared_assets.Messages.ErrorMessage()
+
+        if message.notify_to_console:
+            print(f"  [R] Received message of type {message.name} from server.")
+
         return message
