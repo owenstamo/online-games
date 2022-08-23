@@ -1,3 +1,4 @@
+import io
 import socket
 from typing import Callable
 import shared_assets
@@ -31,11 +32,11 @@ class Network:
                 print("Unable to reconnect to client. Creating a new client.")
                 self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        connected_message = self.recv()
+        connected_message = self.recv()[0]
         print(f"Connected with address {connected_message.address} and client_id {connected_message.client_id}!")
         self.client_id = connected_message.client_id
 
-        self.send(pickle.dumps(shared_assets.Messages.ConnectedMessage(None, None)))
+        self.send(shared_assets.Messages.ConnectedMessage(None, None))
 
     def send(self, message):
         if not isinstance(message, shared_assets.Messages.Message):
@@ -65,7 +66,7 @@ class Network:
 
         return True
 
-    def recv(self):
+    def recv(self) -> list:
         try:
             incoming_message = self.client.recv(4096)
         except ConnectionResetError as err:
@@ -77,17 +78,23 @@ class Network:
             print(f"Error: Error when attempting to receive message from server: {repr(err)}")
             return shared_assets.Messages.ErrorMessage(err)
 
+        data_pieces = []
         try:
-            message = pickle.loads(incoming_message)
+            unpickler = pickle.Unpickler(io.BytesIO(incoming_message))
+            while True:
+                data_pieces.append(unpickler.load())
+        except EOFError:
+            ...
         except Exception as err:
-            print(f"Error: Unable to unpickle message from server: {repr(err)}")
+            print(f"Error: Error when attempting to unpickle message from server: {repr(err)}")
             return shared_assets.Messages.ErrorMessage(err)
 
-        if not isinstance(message, shared_assets.Messages.Message):
-            print(f"Error: Received data that is not a Message class from server.")
+        if not all([isinstance(message, shared_assets.Messages.Message) for message in data_pieces]):
+            print(f"Error: Received data that is not a Message class from server: {', '.join(data_pieces)}")
             return shared_assets.Messages.ErrorMessage()
 
-        if message.notify_to_console:
-            print(f"  [R] Received message of type {message.name} from server.")
+        for message in data_pieces:
+            if message.notify_to_console:
+                print(f"  [R] Received message of type {message.name} from server.")
 
-        return message
+        return data_pieces

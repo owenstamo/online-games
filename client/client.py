@@ -1753,9 +1753,7 @@ def message_listener():
 
     print("Now listening for messages...")
 
-    while True:
-        message = network.recv()
-
+    def handle_message(message):
         if message.name == Messages.GameDataMessage.name:
             if GameHandler.current_game:
                 GameHandler.current_game.on_data_received(message.data)
@@ -1793,6 +1791,12 @@ def message_listener():
                 network.send(Messages.GameInitializedMessage())
         elif message.name == Messages.GameOverMessage.name:
             GameHandler.end_game()
+
+    while True:
+        incoming_data = network.recv()
+        for message_to_handle in incoming_data:
+            _thread.start_new_thread(handle_message, (message_to_handle,))
+
 
 def on_frame():
     """Function to be called every frame. Handles drawing and per-frame functionality."""
