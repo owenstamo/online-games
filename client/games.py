@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+<<<<<<< HEAD
 from typing import TYPE_CHECKING, Callable, Sequence, Type
+=======
+import time
+from typing import TYPE_CHECKING, Callable, Sequence
+>>>>>>> b447c737201023863d4aa403d14309b45c2ee1fc
 import _thread
 import pygame
 from gui import Gui, get_button_functions, get_auto_center_function
@@ -258,6 +263,7 @@ class PongGame(Game):
         self.paddle_pos = self.game_size * Vert(9/10, 1/2) - self.paddle_size / 2
         self.enemy_paddle_target_pos = self.game_size * Vert(1/10, 1/2) - self.paddle_size / 2
         self.enemy_paddle_pos = Vert(self.enemy_paddle_target_pos)
+        self.last_frame = time.time()
 
     def get_draw_pos(self, pos) -> Vert:
         if (x_ratio := self.canvas_size.x / self.game_size.x) < (y_ratio := self.canvas_size.y / self.game_size.y):
@@ -290,21 +296,25 @@ class PongGame(Game):
         if paddle_moved:  # self.paddle_pos.y != prev_paddle_y:
             self.send_data(self.asset_class.Messages.PaddleMove(self.paddle_pos.y))
 
-        self.ball_pos += self.ball_vel
-        self.ball_pos = self.ball_pos.constrained(Vert(0, 0), self.game_size - self.ball_size)
+        current_time = time.time()
+        dt = current_time - self.last_frame
+        self.last_frame = current_time
+        print(dt)
+
+        self.ball_pos += self.ball_vel * dt * 60
 
         if self.ball_pos.x + self.ball_size.x >= self.game_size.x:
-            self.ball_pos.x = self.game_size.x - self.ball_size.x
+            self.ball_pos.x = 2 * (self.game_size.x - self.ball_size.x) - self.ball_pos.x
             self.ball_vel.x *= -1
         elif self.ball_pos.x <= 0:
             self.send_data(self.asset_class.Messages.PlayerDied())
-            self.ball_pos.x = 0
+            self.ball_pos.x = 0 - self.ball_pos.x
             self.ball_vel.x *= -1
         if self.ball_pos.y + self.ball_size.y >= self.game_size.y:
-            self.ball_pos.y = self.game_size.y - self.ball_size.y
+            self.ball_pos.y = 2 * (self.game_size.y - self.ball_size.y) - self.ball_pos.y
             self.ball_vel.y *= -1
         elif self.ball_pos.y <= 0:
-            self.ball_pos.y = 0
+            self.ball_pos.y = 0 - self.ball_pos.y
             self.ball_vel.y *= -1
 
         if Colliding.square_square(self.ball_pos, self.ball_size, self.paddle_pos, self.paddle_size) and self.ball_vel.x > 0:
