@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence, Type
 import _thread
 import pygame
 from gui import Gui, get_button_functions, get_auto_center_function
@@ -89,7 +89,7 @@ class Game:
                  on_game_end: Callable,
                  on_game_leave: Callable,
                  get_all_keys_down: Callable,
-                 gui_colors: Colors,
+                 gui_colors: Type[Colors],
                  menu_button: Gui.GuiElement | None = None,
                  menu: Gui.GuiElement | None = None):
         self.canvas = canvas
@@ -277,7 +277,6 @@ class PongGame(Game):
         pygame.draw.rect(self.canvas, (0,)*3, self.get_draw_rect(Vert(0, 0), self.game_size))
         # TODO: Ball pos should be changed on server side(?). Should depend on dt?
 
-        prev_paddle_y = self.paddle_pos.y
         paddle_moved = False
         if self.key_is_down([pygame.K_w, pygame.K_UP]):
             self.paddle_pos.y -= self.paddle_speed
@@ -298,6 +297,7 @@ class PongGame(Game):
             self.ball_pos.x = self.game_size.x - self.ball_size.x
             self.ball_vel.x *= -1
         elif self.ball_pos.x <= 0:
+            self.send_data(self.asset_class.Messages.PlayerDied())
             self.ball_pos.x = 0
             self.ball_vel.x *= -1
         if self.ball_pos.y + self.ball_size.y >= self.game_size.y:

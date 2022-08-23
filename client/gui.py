@@ -358,14 +358,15 @@ class Gui:
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class MouseInteractable:
-        def __init__(self, on_mouse_down: Sequence[Callable] | Callable = (),
-                           on_mouse_up: Sequence[Callable] | Callable = (),
-                           while_mouse_down: Sequence[Callable] | Callable = (),
-                           on_mouse_over: Sequence[Callable] | Callable = (),
-                           on_mouse_not_over: Sequence[Callable] | Callable = (),
-                           while_mouse_over: Sequence[Callable] | Callable = (),
-                           drag_parent: Gui.GuiElement | None = None,
-                           drag_boundary: Gui.GuiElement | Gui.BoundingBox | None = None, **_):
+        def __init__(self,
+                     on_mouse_down: Sequence[Callable] | Callable = (),
+                     on_mouse_up: Sequence[Callable] | Callable = (),
+                     while_mouse_down: Sequence[Callable] | Callable = (),
+                     on_mouse_over: Sequence[Callable] | Callable = (),
+                     on_mouse_not_over: Sequence[Callable] | Callable = (),
+                     while_mouse_over: Sequence[Callable] | Callable = (),
+                     drag_parent: Gui.GuiElement | None = None,
+                     drag_boundary: Gui.GuiElement | Gui.BoundingBox | None = None, **_):
             """
             A base gui class that adds the framework for mouse interaction, allowing the element to handle mouse clicks, releases, and holding, as well as mouse over and not over, and dragging of element.
 
@@ -468,9 +469,10 @@ class Gui:
 
     class Rect(ContainerElement, Shape, MouseInteractable):
 
-        def __init__(self, pos: AnyVert = Vert(0, 0),
-                           size: AnyVert = Vert(0, 0),
-                           col: tuple[int, int, int] = (255, 255, 255), **kwargs):
+        def __init__(self,
+                     pos: AnyVert = Vert(0, 0),
+                     size: AnyVert = Vert(0, 0),
+                     col: tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
             A gui element that can be drawn and interacted with as a square. A subclass of ContainerElement, Shape, and MouseInteractable.
 
@@ -512,11 +514,12 @@ class Gui:
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class Image(Rect):
-        def __init__(self, pos: AnyVert = Vert(0, 0),
-                           image: pygame.Surface = None,
-                           size: AnyVert = None,
-                           stroke_weight: int = 0,
-                           stroke_col: tuple[int, int, int] = Colors.black, **kwargs):
+        def __init__(self,
+                     pos: AnyVert = Vert(0, 0),
+                     image: pygame.Surface = None,
+                     size: AnyVert = None,
+                     stroke_weight: int = 0,
+                     stroke_col: tuple[int, int, int] = Colors.black, **kwargs):
             """
             A gui element that can be drawn and interacted with as a square. A subclass of ContainerElement, Shape, and MouseInteractable.
 
@@ -572,9 +575,10 @@ class Gui:
             return Gui.BoundingBox(Vert(0, 0), self._size)
 
     class Circle(ContainerElement, Shape, MouseInteractable):
-        def __init__(self, pos: AnyVert = Vert(0, 0),
-                           rad: int = 0,
-                           col: tuple[int, int, int] = (255, 255, 255), **kwargs):
+        def __init__(self,
+                     pos: AnyVert = Vert(0, 0),
+                     rad: int = 0,
+                     col: tuple[int, int, int] = (255, 255, 255), **kwargs):
             """
             A gui element that can be drawn and interacted with as a circle. A subclass of ContainerElement, Shape, and MouseInteractable
 
@@ -839,8 +843,8 @@ class Gui:
             size_per_font_size_detail = 20
             if self.rendered_sizes:
                 longest_line_index = max(range(len(self.lines)), key=lambda i: self.rendered_sizes[i].x if self.rendered_sizes[i] else 0)
-                rendered_font = pygame.font.SysFont(self._font, size_per_font_size_detail) \
-                                               .render(self.lines[longest_line_index], False, (255, 255, 255))
+                rendered_font = pygame.font.SysFont(self._font, size_per_font_size_detail)\
+                    .render(self.lines[longest_line_index], False, (255, 255, 255))
                 self.size_per_font_size = \
                     Vert(rendered_font.get_size()[0],
                          size_per_font_size_detail * len(self.lines) + self.line_spacing * (len(self.lines) - 1)) \
@@ -1022,9 +1026,9 @@ class Gui:
                 return call_on_key_input()
 
             shift_is_down = pygame.K_LSHIFT in keys_down or \
-                            pygame.K_RSHIFT in keys_down
+                pygame.K_RSHIFT in keys_down
             control_is_down = pygame.K_RCTRL in keys_down or \
-                              pygame.K_LCTRL in keys_down
+                pygame.K_LCTRL in keys_down
 
             if key_code == pygame.K_BACKSPACE and self.text_element.text:
                 if control_is_down:
@@ -1096,12 +1100,12 @@ def get_auto_center_function(element_centered_on: Gui.GuiElement | None = None,
         if not bounding_box:
             bounding_box = Gui.BoundingBox(Vert(0, 0), Vert(0, 0))
         element.pos = bounding_box.pos + \
-                      bounding_box.size * Vert(OFFSETS[align[0]], OFFSETS[align[1]]) + \
-                      bounding_box.size.x * offset_scaled_by_parent_width + \
-                      bounding_box.size.y * offset_scaled_by_parent_height + \
-                      element.bounding_box_ignoring_children.size.x * offset_scaled_by_element_width + \
-                      element.bounding_box_ignoring_children.size.y * offset_scaled_by_element_height + \
-                      constant_offset
+            bounding_box.size * Vert(OFFSETS[align[0]], OFFSETS[align[1]]) + \
+            bounding_box.size.x * offset_scaled_by_parent_width + \
+            bounding_box.size.y * offset_scaled_by_parent_height + \
+            element.bounding_box_ignoring_children.size.x * offset_scaled_by_element_width + \
+            element.bounding_box_ignoring_children.size.y * offset_scaled_by_element_height + \
+            constant_offset
 
     return auto_center
 

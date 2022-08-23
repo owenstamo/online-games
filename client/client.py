@@ -69,7 +69,7 @@ def get_default_username():
 class Menu(ABC):
 
     @staticmethod
-    def reset_button_color(element,
+    def reset_button_color(element: Gui.Rect,
                            default_color=Colors.button_default_color,
                            mouse_over_color=Colors.button_mouse_over_color):
         element.col = mouse_over_color if element.mouse_is_over else default_color
@@ -485,7 +485,7 @@ class MultiplayerMenu(Menu):
             game_title := Gui.Text(text_align=["LEFT", "CENTER"],
                                    on_draw_before=before_draw_funcs[1]),
             host := Gui.Text(text_align=["LEFT", "CENTER"],
-                              on_draw_before=before_draw_funcs[2])
+                             on_draw_before=before_draw_funcs[2])
         )
 
         self.lobby_title, self.game_title, self.host = title, game_title, host
@@ -655,7 +655,7 @@ class MultiplayerMenu(Menu):
                                             self.game_info_container.size.x / self.game_title.size_per_font_size.x * 0.9)
         if self.host.text:
             self.host.font_size = min(self.game_info_container.size.y / 4,
-                                       self.game_info_container.size.x / self.host.size_per_font_size.x * 0.9)
+                                      self.game_info_container.size.x / self.host.size_per_font_size.x * 0.9)
 
         if resize_player_list:
             self.resize_lobby_info_player_list()
@@ -690,9 +690,9 @@ class MultiplayerMenu(Menu):
                 button.pos = button_list_pos + Vert(0, i * (button.size.y + button_list_padding))
 
         self.lobby_list_background.pos = Vert(padding.x,
-                                               self.back_button.pos.y + self.back_button.size.y + padding.y)
+                                              self.back_button.pos.y + self.back_button.size.y + padding.y)
         self.lobby_list_background.size = Vert(canvas_size.x / 2 - padding.x * 1.5,
-                                                canvas_size.y - self.lobby_list_background.pos.y - padding.y)
+                                               canvas_size.y - self.lobby_list_background.pos.y - padding.y)
 
         self.resize_lobby_list_elements()
         self.resize_lobby_info_elements()
@@ -1490,7 +1490,7 @@ class HostLobbyRoom(LobbyRoom):
         # self.game_select_dropdown.pos = self.game_select.pos + Vert(0, self.game_select.size.y - 1)
         self.game_select_dropdown.pos = self.game_settings_container.pos
         max_dropdown_size = self.game_start_button.pos.y + self.game_start_button.size.y - \
-                            (self.game_select.pos.y + self.game_select.size.y)
+            (self.game_select.pos.y + self.game_select.size.y)
         game_element_height = min(max_dropdown_size / len(self.game_elements),
                                   self.game_select.size.y)
         self.game_select_dropdown.size = Vert(self.game_select.size.x, len(self.game_elements) * game_element_height)
@@ -1885,6 +1885,7 @@ def initialize_network():
 
     if not listening_for_messages:
         _thread.start_new_thread(message_listener, ())
+
 
 if __name__ == "__main__":
     # Initialize network class, which automatically connects it to server.

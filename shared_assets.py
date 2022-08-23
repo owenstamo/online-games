@@ -96,7 +96,7 @@ class Messages:
         unchanged = "unchanged"
 
         def __init__(self, lobby_title: str = unchanged, private: bool = unchanged, host_id: int = unchanged,
-                     game_id: str = unchanged, game_settings: str = unchanged):
+                     game_id: str = unchanged, game_settings=unchanged):
             self.lobby_title = lobby_title
             self.private = private
             self.host_id = host_id
@@ -223,3 +223,6 @@ class PongAssets:
         class PaddleMove:
             def __init__(self, paddle_y):
                 self.paddle_y = paddle_y
+
+        class PlayerDied:
+            ...

@@ -8,7 +8,7 @@ class Network:
                  on_server_not_found: Callable = None,
                  on_server_disconnect: Callable = None):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server = "216.71.110.17"
+        self.server = "localhost"  # "216.71.110.17"
         self.port = shared_assets.port
         self.address = (self.server, self.port)
         self.on_server_disconnect = on_server_disconnect
@@ -35,11 +35,11 @@ class Network:
         print(f"Connected with address {connected_message.address} and client_id {connected_message.client_id}!")
         self.client_id = connected_message.client_id
 
-        self.send(pickle.dumps(shared_assets.Messages.ConnectedMessage(None, None)))
+        self.send(shared_assets.Messages.ConnectedMessage(None, None))
 
-    def send(self, message):
+    def send(self, message: shared_assets.Messages.Message):
         if not isinstance(message, shared_assets.Messages.Message):
-            raise TypeError("Message must be a child of the Message class.")
+            raise TypeError(f"Message must be a child of the Message class: {message}")
 
         try:
             outgoing_message = pickle.dumps(message)
@@ -49,8 +49,6 @@ class Network:
 
         try:
             self.client.send(outgoing_message)
-            if isinstance(message, shared_assets.Messages.GameDataMessage):
-                print(message.data)
         except ConnectionResetError:
             print(f"Could not find server to send message of type {message.name}. Assuming server is disconnected.")
             if self.on_server_disconnect:

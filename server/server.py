@@ -330,8 +330,8 @@ def process_message(message: Messages.Message, client: ConnectedClient):
         server.send(kicked_player, Messages.KickedFromLobbyMessage())
 
     elif isinstance(message, Messages.NewChatMessage):
-        CHAT_FORMAT = "<{}> {}"
-        chat_message = CHAT_FORMAT.format(client.username, message.message)
+        chat_format = "<{}> {}"
+        chat_message = chat_format.format(client.username, message.message)
 
         client.lobby_in.chat_messages.append(chat_message)
 
